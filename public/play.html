@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="/style.css"><script src="/socket.io/socket.io.js"></script></head>
 <body><div id="app" style="max-width:480px;margin:auto;padding:18px"></div>
 <script>
-const $ = document.getElementById('app'); const socket = io(); let S = null, tick = null;
+const $ = document.getElementById('app'); const $id = (i) => document.getElementById(i); const socket = io(); let S = null, tick = null;
 const COLORS = ['#FF5A5F', '#FCA311', '#2EC4B6', '#4D96FF', '#9B5DE5', '#F15BB5', '#8AC926', '#E9ECEF'];
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const buzz = (n = 30) => navigator.vibrate?.(n);
@@ -28,9 +28,9 @@ function joinScreen() {
     <input class="field" id="name" placeholder="Seu nome" maxlength="12" value="${esc(form.name)}" style="margin-top:12px">
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0">${COLORS.map((c) => `<button data-c="${c}" aria-label="cor" style="aspect-ratio:1;border-radius:50%;background:${c};border:${c === form.color ? '5px solid #fff' : '5px solid transparent'}"></button>`).join('')}</div>
     <button class="btn" id="go">Entrar</button>`;
-  $.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => { form.room = room.value; form.name = name.value; form.color = b.dataset.c; joinScreen(); }));
-  go.onclick = () => {
-    form = { ...form, room: room.value.toUpperCase(), name: name.value };
+  $.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => { form.room = $id('room').value; form.name = $id('name').value; form.color = b.dataset.c; joinScreen(); }));
+  $id('go').onclick = () => {
+    form = { ...form, room: $id('room').value.toUpperCase(), name: $id('name').value };
     socket.emit('player:join', { code: form.room, name: form.name, color: form.color }, (r) => {
       if (r.error) { form.err = r.error; return joinScreen(); }
       localStorage.setItem('me', JSON.stringify({ code: form.room, playerId: r.playerId })); buzz(60);
@@ -63,8 +63,8 @@ function adedonha(head, vip) {
       `<button class="btn" id="stop" style="margin-top:18px;background:#FF5A5F;color:#fff;font-size:2rem">STOP!</button>`;
     const get = () => [...document.querySelectorAll('.a')].map((i) => i.value);
     let deb; document.querySelectorAll('.a').forEach((i) => (i.oninput = () => { clearTimeout(deb); deb = setTimeout(() => act('draft', { answers: get() }), 300); }));
-    stop.onclick = () => { buzz([80, 40, 80]); socket.emit('game:action', { type: 'stop', payload: { answers: get() } }); };
-    const off = Date.now() - v.serverNow, t = document.getElementById('t');
+    $id('stop').onclick = () => { buzz([80, 40, 80]); socket.emit('game:action', { type: 'stop', payload: { answers: get() } }); };
+    const off = Date.now() - v.serverNow, t = $id('t');
     const u = () => { t.textContent = Math.max(0, Math.ceil((v.endsAt - (Date.now() - off)) / 1000)); };
     u(); tick = setInterval(u, 250); return;
   }
@@ -72,9 +72,9 @@ function adedonha(head, vip) {
     const mine = v.ranking.findIndex((r) => r.id === S.me) + 1;
     $.innerHTML = head + `<h2>Olhe a TV 📺</h2><p>Você está em <b>${mine}º</b> lugar.</p>` +
       (vip ? `<button class="btn" id="nx">Próxima rodada</button>` : '<p style="opacity:.7">Aguardando o ⭐…</p>');
-    if (vip) nx.onclick = () => act('next'); return;
+    if (vip) $id('nx').onclick = () => act('next'); return;
   }
   $.innerHTML = head + `<h2>Fim de jogo! 🏆</h2>` + (vip ? `<button class="btn" id="end">Voltar ao menu</button>` : '');
-  if (vip) end.onclick = () => socket.emit('game:end');
+  if (vip) $id('end').onclick = () => socket.emit('game:end');
 }
 </script></body></html>
