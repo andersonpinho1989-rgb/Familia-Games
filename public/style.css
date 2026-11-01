@@ -1,0 +1,14 @@
+:root{--bg:#14213D;--ink:#F8F5EE;--gold:#FCA311;--panel:#1F3159;--ok:#2EC4B6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Baloo 2',system-ui,sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent}
+.btn{background:var(--gold);color:#14213D;font-weight:800;border:0;border-radius:18px;padding:16px 22px;font-size:1.25rem;width:100%;font-family:inherit;transition:transform .08s}
+.btn:active{transform:scale(.96)}.btn:disabled{opacity:.4}
+.btn.ghost{background:var(--panel);color:var(--ink)}
+.panel{background:var(--panel);border-radius:22px;padding:18px}
+.chip{display:inline-flex;align-items:center;gap:10px;border-radius:999px;padding:8px 18px 8px 8px;background:var(--panel);font-weight:700}
+.dot{width:34px;height:34px;border-radius:50%;display:inline-block}
+.off{opacity:.4}
+.pop{animation:pop .35s ease-out}@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+input.field{width:100%;padding:14px 16px;border-radius:14px;border:2px solid #34508f;background:#0f1a31;color:var(--ink);font-size:1.2rem;font-family:inherit}
+input.field:focus{outline:3px solid var(--gold);border-color:var(--gold)}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}

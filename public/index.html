@@ -1,0 +1,70 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Família Games — TV</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/socket.io/socket.io.js"></script></head>
+<body><div id="app" style="font-size:clamp(18px,1.6vw,34px);padding:3vw"></div>
+<script>
+const $ = document.getElementById('app'); const socket = io(); let S = null, tick = null;
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const chip = (p, extra = '') => `<span class="chip ${p.connected === false ? 'off' : ''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}${extra}</span>`;
+const byId = (id) => S.players.find((p) => p.id === id) || { name: '?', color: '#888' };
+
+function start() {
+  const saved = JSON.parse(sessionStorage.getItem('room') || 'null');
+  const create = () => socket.emit('host:create', null, (r) => sessionStorage.setItem('room', JSON.stringify(r)));
+  if (saved) socket.emit('host:resume', saved, (r) => r.error && create()); else create();
+}
+socket.on('connect', start); // roda também a cada reconexão automática
+socket.on('state', (s) => { S = s; render(); });
+
+function render() {
+  clearInterval(tick);
+  if (S.phase === 'lobby') return lobby();
+  if (S.gameId === 'adedonha') return adedonha();
+}
+
+function lobby() {
+  const url = `${location.origin}/play.html?room=${S.code}`;
+  $.innerHTML = `<div style="display:grid;grid-template-columns:1fr auto;gap:4vw;align-items:center">
+    <div><h1 style="font-size:2em;margin:0">Entre pelo celular</h1>
+      <p style="opacity:.8;margin:.2em 0 1em">Escaneie o QR Code ou abra <b>${esc(location.host)}/play.html</b></p>
+      <div style="font-size:7em;font-weight:800;letter-spacing:.12em;color:var(--gold);line-height:1">${S.code}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:1.2em">${S.players.map((p) => chip(p, p.id === S.vip ? ' ⭐' : '')).join('') || '<span style="opacity:.6">Aguardando jogadores…</span>'}</div>
+      <p style="opacity:.8;margin-top:1.5em">${S.gameId ? 'Jogo: <b>' + esc(S.games.find((g) => g.id === S.gameId).name) + '</b> — o ⭐ pode iniciar.' : 'O jogador ⭐ escolhe o jogo no celular.'}</p></div>
+    <div id="qr" style="background:#fff;padding:18px;border-radius:24px"></div></div>`;
+  new QRCode(document.getElementById('qr'), { text: url, width: 360, height: 360 });
+}
+
+function clock(endsAt, serverNow) {
+  const off = Date.now() - serverNow; // corrige diferença de relógio TV/servidor
+  const el = document.getElementById('clock');
+  const upd = () => { const s = Math.max(0, Math.ceil((endsAt - (Date.now() - off)) / 1000)); if (el) { el.textContent = s; el.style.color = s <= 10 ? '#FF5A5F' : 'var(--ink)'; } };
+  upd(); tick = setInterval(upd, 250);
+}
+
+const rank = (r) => r.map((x, i) => `<div class="panel" style="display:flex;justify-content:space-between;margin-bottom:10px">${chip(byId(x.id))}<b style="font-size:1.4em">${i + 1}º · ${x.score} pts</b></div>`).join('');
+
+function adedonha() {
+  const v = S.view;
+  if (v.phase === 'playing') {
+    $.innerHTML = `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:4vw;align-items:center">
+      <div class="pop" style="font-size:16em;font-weight:800;color:var(--gold);line-height:.9">${v.letter}</div>
+      <div><h2 style="margin:0;opacity:.8">Rodada ${v.round}/${v.rounds}</h2>
+        ${v.cats.map((c) => `<div class="panel" style="margin:10px 0;font-size:1.5em;font-weight:700">${esc(c)}</div>`).join('')}</div>
+      <div style="text-align:center"><div id="clock" style="font-size:9em;font-weight:800"></div>
+        <div style="display:grid;gap:8px;margin-top:1em">${S.players.map((p) => chip(p, ` <b>${v.filled[p.id] || 0}/${v.cats.length}</b>`)).join('')}</div></div></div>`;
+    return clock(v.endsAt, v.serverNow);
+  }
+  if (v.phase === 'results') {
+    $.innerHTML = `<h1 style="margin:0 0 .4em">Letra ${v.letter} — ${v.stopper ? esc(byId(v.stopper).name) + ' gritou STOP!' : 'Tempo esgotado'}</h1>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 8px">
+      <tr><th></th>${v.cats.map((c) => `<th style="text-align:left;opacity:.7">${esc(c)}</th>`).join('')}<th>Total</th></tr>
+      ${S.players.map((p) => `<tr class="panel"><td>${chip(p)}</td>${v.results[p.id].cells.map((c) => `<td style="color:${c.pts ? (c.pts === 10 ? 'var(--ok)' : 'var(--gold)') : '#FF5A5F'}">${esc(c.text) || '—'} <b>${c.pts ? '+' + c.pts : ''}</b></td>`).join('')}<td><b style="font-size:1.4em">${v.results[p.id].total}</b></td></tr>`).join('')}</table></div>
+      <p style="opacity:.7">10 pts = resposta única · 5 pts = repetida · 0 = vazia ou letra errada. O ⭐ toca “Próxima rodada” no celular.</p>`;
+    return;
+  }
+  $.innerHTML = `<h1 style="font-size:3em;margin:0 0 .4em">🏆 Resultado final</h1>${rank(v.ranking)}`;
+}
+</script></body></html>

@@ -1,0 +1,80 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Família Games</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css"><script src="/socket.io/socket.io.js"></script></head>
+<body><div id="app" style="max-width:480px;margin:auto;padding:18px"></div>
+<script>
+const $ = document.getElementById('app'); const socket = io(); let S = null, tick = null;
+const COLORS = ['#FF5A5F', '#FCA311', '#2EC4B6', '#4D96FF', '#9B5DE5', '#F15BB5', '#8AC926', '#E9ECEF'];
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const buzz = (n = 30) => navigator.vibrate?.(n);
+const act = (type, payload) => { buzz(); socket.emit('game:action', { type, payload }); };
+const saved = () => JSON.parse(localStorage.getItem('me') || 'null');
+let form = { room: new URLSearchParams(location.search).get('room') || '', name: '', color: COLORS[3], err: '' };
+
+socket.on('connect', () => { // reconexão silenciosa: reassume o mesmo jogador
+  const me = saved(); if (!me) return joinScreen();
+  socket.emit('player:join', me, (r) => { if (r.error) { localStorage.removeItem('me'); form.err = r.error; joinScreen(); } });
+});
+socket.on('disconnect', () => { document.body.style.opacity = .6; });
+socket.on('toast', (m) => alert(m));
+socket.on('state', (s) => { document.body.style.opacity = 1; S = s; render(); });
+
+function joinScreen() {
+  $.innerHTML = `<h1 style="font-size:2.4em;margin:.2em 0">Entrar na sala</h1>
+    <p style="color:#F15BB5;min-height:1.4em">${esc(form.err)}</p>
+    <input class="field" id="room" placeholder="Código (4 letras)" maxlength="4" value="${esc(form.room)}" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;font-size:1.8rem">
+    <input class="field" id="name" placeholder="Seu nome" maxlength="12" value="${esc(form.name)}" style="margin-top:12px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0">${COLORS.map((c) => `<button data-c="${c}" aria-label="cor" style="aspect-ratio:1;border-radius:50%;background:${c};border:${c === form.color ? '5px solid #fff' : '5px solid transparent'}"></button>`).join('')}</div>
+    <button class="btn" id="go">Entrar</button>`;
+  $.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => { form.room = room.value; form.name = name.value; form.color = b.dataset.c; joinScreen(); }));
+  go.onclick = () => {
+    form = { ...form, room: room.value.toUpperCase(), name: name.value };
+    socket.emit('player:join', { code: form.room, name: form.name, color: form.color }, (r) => {
+      if (r.error) { form.err = r.error; return joinScreen(); }
+      localStorage.setItem('me', JSON.stringify({ code: form.room, playerId: r.playerId })); buzz(60);
+    });
+  };
+}
+
+function render() {
+  clearInterval(tick);
+  const me = S.players.find((p) => p.id === S.me); if (!me) return;
+  const head = `<div class="chip" style="margin-bottom:14px"><i class="dot" style="background:${me.color}"></i>${esc(me.name)} · sala ${S.code}</div>`;
+  const vip = S.me === S.vip;
+  if (S.phase === 'lobby') {
+    $.innerHTML = head + `<h2 style="margin:.2em 0">${vip ? 'Escolha o jogo' : 'Aguardando o ⭐ iniciar…'}</h2>` +
+      S.games.map((g) => `<button class="btn ${S.gameId === g.id ? '' : 'ghost'}" data-g="${g.id}" ${!vip || !g.available ? 'disabled' : ''} style="margin-bottom:10px;text-align:left">${g.emoji} ${esc(g.name)} <small>${g.available ? `(${g.min}–${g.max})` : '· em breve'}</small></button>`).join('') +
+      (vip ? `<button class="btn" id="start" ${S.gameId ? '' : 'disabled'} style="margin-top:8px;background:var(--ok)">Começar!</button>` : '');
+    $.querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { buzz(); socket.emit('game:select', b.dataset.g); }));
+    if (vip) document.getElementById('start').onclick = () => { buzz(60); socket.emit('game:start'); };
+    return;
+  }
+  if (S.gameId === 'adedonha') return adedonha(head, vip);
+}
+
+function adedonha(head, vip) {
+  const v = S.view;
+  if (v.phase === 'playing') {
+    const prev = [...document.querySelectorAll('.a')].map((i) => i.value); // preserva o que já foi digitado
+    $.innerHTML = head + `<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:5em;font-weight:800;color:var(--gold);line-height:1">${v.letter}</div><div id="t" style="font-size:3em;font-weight:800"></div></div>` +
+      v.cats.map((c, i) => `<label style="display:block;margin:10px 0 4px;font-weight:700">${esc(c)}</label><input class="field a" data-i="${i}" value="${esc(prev[i] || '')}" autocomplete="off" autocapitalize="words" placeholder="${v.letter}…">`).join('') +
+      `<button class="btn" id="stop" style="margin-top:18px;background:#FF5A5F;color:#fff;font-size:2rem">STOP!</button>`;
+    const get = () => [...document.querySelectorAll('.a')].map((i) => i.value);
+    let deb; document.querySelectorAll('.a').forEach((i) => (i.oninput = () => { clearTimeout(deb); deb = setTimeout(() => act('draft', { answers: get() }), 300); }));
+    stop.onclick = () => { buzz([80, 40, 80]); socket.emit('game:action', { type: 'stop', payload: { answers: get() } }); };
+    const off = Date.now() - v.serverNow, t = document.getElementById('t');
+    const u = () => { t.textContent = Math.max(0, Math.ceil((v.endsAt - (Date.now() - off)) / 1000)); };
+    u(); tick = setInterval(u, 250); return;
+  }
+  if (v.phase === 'results') {
+    const mine = v.ranking.findIndex((r) => r.id === S.me) + 1;
+    $.innerHTML = head + `<h2>Olhe a TV 📺</h2><p>Você está em <b>${mine}º</b> lugar.</p>` +
+      (vip ? `<button class="btn" id="nx">Próxima rodada</button>` : '<p style="opacity:.7">Aguardando o ⭐…</p>');
+    if (vip) nx.onclick = () => act('next'); return;
+  }
+  $.innerHTML = head + `<h2>Fim de jogo! 🏆</h2>` + (vip ? `<button class="btn" id="end">Voltar ao menu</button>` : '');
+  if (vip) end.onclick = () => socket.emit('game:end');
+}
+</script></body></html>
