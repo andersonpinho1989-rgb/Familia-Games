@@ -2,8 +2,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Família Games</title>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css"><script src="/socket.io/socket.io.js"></script><script src="/audio.js"></script><script src="/dice.js"></script></head>
-<body><button id="snd" class="btn ghost" style="position:fixed;top:10px;right:10px;width:auto;font-size:1.2rem;padding:6px 12px;z-index:9" aria-label="Som">🔊</button><div id="app" style="max-width:480px;margin:auto;padding:18px"></div>
+<link rel="stylesheet" href="/style.css"><script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script></head>
+<body><div id="topbtns" style="position:fixed;top:10px;right:10px;display:flex;gap:8px;z-index:9"><button id="exitbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:6px 12px"></button><button id="snd" class="btn ghost" style="width:auto;font-size:1.2rem;padding:6px 12px" aria-label="Som">🔊</button></div><div id="app" style="max-width:480px;margin:auto;padding:58px 18px 18px"></div>
 <script>
 const $ = document.getElementById('app'); const $id = (i) => document.getElementById(i); const socket = io(); let S = null, tick = null;
 const COLORS = ['#FF5A5F', '#FCA311', '#2EC4B6', '#4D96FF', '#9B5DE5', '#F15BB5', '#8AC926', '#E9ECEF'];
@@ -27,10 +27,12 @@ let BUILD = null;
 socket.on('state', (s) => {
   if (BUILD && s.build && s.build !== BUILD) return location.reload();
   BUILD = s.build; document.body.style.opacity = 1; S = s;
+  GA.setTheme(s.phase === 'game' && s.gameId === 'ludo' && s.view ? s.view.theme : 'classic');
   try { render(); } catch (e) { $.innerHTML = '<pre style="white-space:pre-wrap;color:#FCA311">Erro: ' + esc(e.message) + '</pre>'; console.error(e); }
 });
 
 function joinScreen() {
+  $id('exitbtn').hidden = true;
   $.innerHTML = `<h1 style="font-size:2.4em;margin:.2em 0">Entrar na sala</h1>
     <p style="color:#F15BB5;min-height:1.4em">${esc(form.err)}</p>
     <input class="field" id="room" placeholder="Código (4 letras)" maxlength="4" value="${esc(form.room)}" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;font-size:1.8rem">
@@ -50,19 +52,33 @@ function joinScreen() {
 function render() {
   clearInterval(tick);
   const me = S.players.find((p) => p.id === S.me); if (!me) return;
+  updateTop();
   const head = `<div class="chip" style="margin-bottom:14px"><i class="dot" style="background:${me.color}"></i>${esc(me.name)} · sala ${S.code}</div>`;
   const vip = S.me === S.vip;
   if (S.phase === 'lobby') {
+    const g = S.games.find((x) => x.id === S.gameId), st = S.settings || {}, picks = S.picks || {};
+    const optTxt = (o, val) => (o.labels && o.labels[val]) || (val + (o.suffix || ''));
+    let opts = '', pick = '';
+    if (g && g.options) opts = '<div class="panel" style="margin-top:12px">' + g.options.map((o) => vip
+      ? `<div style="margin:6px 0 6px;font-weight:700">${esc(o.label)}</div><div style="display:flex;flex-wrap:wrap;gap:8px">${o.choices.map((c, ci) => `<button class="btn ${st[o.key] === c ? '' : 'ghost'}" data-o="${o.key}" data-ci="${ci}" style="width:auto;padding:10px 16px;font-size:1rem">${esc(optTxt(o, c))}</button>`).join('')}</div>`
+      : `<div style="margin:6px 0">${esc(o.label)}: <b>${esc(optTxt(o, st[o.key]))}</b></div>`).join('') + '</div>';
+    if (g && g.pick) {
+      const th = THEMES[st.theme] || THEMES.classic;
+      pick = `<div style="margin:14px 0 6px;font-weight:700">Escolha seu personagem / cor</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">` + th.seats.map((sd, k) => {
+        const owner = Object.keys(picks).find((id) => picks[id] === k), mineSel = owner === S.me, other = owner && !mineSel, on = S.players.find((p) => p.id === owner);
+        return `<button data-seat="${k}" ${other ? 'disabled' : ''} class="btn" style="background:${sd.c};color:#14213D;padding:12px 6px;border:4px solid ${mineSel ? '#fff' : 'transparent'};opacity:${other ? .35 : 1}"><span style="font-size:1.8rem">${sd.e}</span><br><small>${esc(sd.n)}</small>${other ? '<br><small>(' + esc(on ? on.name : '') + ')</small>' : ''}</button>`; }).join('') + '</div>';
+    }
     $.innerHTML = head + `<h2 style="margin:.2em 0">${vip ? 'Escolha o jogo' : 'Aguardando o ⭐ iniciar…'}</h2>` +
-      S.games.map((g) => `<button class="btn ${S.gameId === g.id ? '' : 'ghost'}" data-g="${g.id}" ${!vip || !g.available ? 'disabled' : ''} style="margin-bottom:10px;text-align:left">${g.emoji} ${esc(g.name)} <small>${g.available ? `(${g.min}–${g.max})` : '· em breve'}</small></button>`).join('') +
-      (vip ? `<button class="btn" id="start" ${S.gameId ? '' : 'disabled'} style="margin-top:8px;background:var(--ok)">Começar!</button>` : '');
+      S.games.map((g2) => `<button class="btn ${S.gameId === g2.id ? '' : 'ghost'}" data-g="${g2.id}" ${!vip || !g2.available ? 'disabled' : ''} style="margin-bottom:10px;text-align:left">${g2.emoji} ${esc(g2.name)} <small>${g2.available ? `(${g2.min}–${g2.max})` : '· em breve'}</small></button>`).join('') +
+      opts + pick + (vip ? `<button class="btn" id="start" ${S.gameId ? '' : 'disabled'} style="margin-top:14px;background:var(--ok)">Começar!</button>` : '');
     $.querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { buzz(); socket.emit('game:select', b.dataset.g); }));
+    $.querySelectorAll('[data-o]').forEach((b) => (b.onclick = () => { buzz(); const o = g.options.find((x) => x.key === b.dataset.o); socket.emit('game:setting', { key: o.key, value: o.choices[+b.dataset.ci] }); }));
+    $.querySelectorAll('[data-seat]').forEach((b) => (b.onclick = () => { buzz(); GA.sfx('ok'); socket.emit('player:pick', +b.dataset.seat); }));
     if (vip) document.getElementById('start').onclick = () => { GA.sfx('start'); buzz(60); socket.emit('game:start'); };
     return;
   }
   if (S.gameId === 'adedonha') adedonha(head, vip);
   else if (S.gameId === 'ludo') ludo(head, vip);
-  addAbort(vip && S.view.phase !== 'over' && S.view.phase !== 'final');
 }
 
 function adedonha(head, vip) {
@@ -77,9 +93,9 @@ function adedonha(head, vip) {
     $.innerHTML = head + `<h2 style="margin:.2em 0">Rodada ${v.round}/${v.rounds}</h2>` +
       (v.phase === 'spinning' ? `<div class="panel" style="text-align:center;font-size:2rem;padding:40px 10px">🎰 Sorteando…<br><small>olhe a TV</small></div>`
         : mineDraw ? `<button class="btn" id="spin" style="font-size:2rem;padding:34px">🎰 GIRAR A LETRA</button>`
-        : `<div class="panel" style="text-align:center;font-size:1.4rem">Vez de <b>${esc(dn)}</b> girar a letra…</div>`) +
+        : `<div class="panel" style="text-align:center;font-size:1.4rem">Vez de <b>${esc(dn)}</b> girar a letra…</div>` + (vip ? `<button class="btn ghost" id="spin" style="margin-top:12px">🎰 Girar por ele(a) (você é o ⭐)</button>` : '')) +
       `<p style="opacity:.7">Letras já usadas: ${v.used.length ? v.used.join(' ') : 'nenhuma'}</p>`;
-    if (mineDraw && v.phase === 'draw') $id('spin').onclick = () => { GA.sfx('dice'); act('spin'); };
+    if (v.phase === 'draw' && $id('spin')) $id('spin').onclick = () => { GA.sfx('dice'); act('spin'); };
     return;
   }
   if (v.phase === 'validating') {
@@ -89,21 +105,34 @@ function adedonha(head, vip) {
       S.players.filter((p) => p.id !== me).map((p) => `<div class="panel" style="margin-bottom:12px"><div style="margin-bottom:6px">${chipH(p)}</div>` +
         v.board[p.id].map((c, i) => c.e ? '' : `<div style="display:flex;align-items:center;gap:10px;margin:8px 0"><div style="flex:1;min-width:0"><small style="opacity:.7">${esc(v.cats[i])}</small><br><b style="${c.a ? '' : 'text-decoration:line-through;color:#FF5A5F'}">${esc(c.t)}</b>${c.a ? '' : ' <small>inválida</small>'}</div>` +
           (c.a ? `<button data-t="${p.id}" data-c="${i}" class="btn ghost" style="width:68px;padding:14px 0;background:${v.mine.indexOf(p.id + '|' + i) >= 0 ? '#FF5A5F' : '#2EC4B6'};color:#14213D">${v.mine.indexOf(p.id + '|' + i) >= 0 ? '✗' : '✓'}</button>` : '') + '</div>').join('') + '</div>').join('') +
-      `<button class="btn" id="rdy" ${readyMe ? 'disabled' : ''} style="background:var(--ok)">${readyMe ? 'Aguardando os outros…' : '✅ Terminei de validar'}</button>`;
+      `<button class="btn" id="rdy" ${readyMe ? 'disabled' : ''} style="background:var(--ok)">${readyMe ? 'Aguardando os outros…' : '✅ Terminei de validar'}</button>` +
+      (vip ? `<button class="btn ghost" id="skipv" style="margin-top:10px">⏭ Encerrar validação agora (⭐)</button>` : '');
     document.querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => act('vote', { target: b.dataset.t, cat: +b.dataset.c, reject: v.mine.indexOf(b.dataset.t + '|' + b.dataset.c) < 0 })));
     $id('rdy').onclick = () => { GA.sfx('ok'); act('ready'); };
+    if ($id('skipv')) $id('skipv').onclick = () => act('skip');
     const off = Date.now() - v.serverNow, vt = $id('vt');
     const u = () => { vt.textContent = '· ' + Math.max(0, Math.ceil((v.endsAt - (Date.now() - off)) / 1000)) + 's'; }; u(); tick = setInterval(u, 500);
     window.scrollTo(0, y); return;
   }
   if (v.phase === 'playing') {
-    const prev = [...document.querySelectorAll('.a')].map((i) => i.value); // preserva o que já foi digitado
-    $.innerHTML = head + `<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:5em;font-weight:800;color:var(--gold);line-height:1">${v.letter}</div><div id="t" style="font-size:3em;font-weight:800"></div></div>` +
-      v.cats.map((c, i) => `<label style="display:block;margin:10px 0 4px;font-weight:700">${esc(c)}</label><input class="field a" data-i="${i}" value="${esc(prev[i] || '')}" autocomplete="off" autocapitalize="words" placeholder="${v.letter}…">`).join('') +
-      `<button class="btn" id="stop" style="margin-top:18px;background:#FF5A5F;color:#fff;font-size:2rem">STOP!</button>`;
-    const get = () => [...document.querySelectorAll('.a')].map((i) => i.value);
-    let deb; document.querySelectorAll('.a').forEach((i) => (i.oninput = () => { clearTimeout(deb); deb = setTimeout(() => act('draft', { answers: get() }), 300); }));
-    $id('stop').onclick = () => { GA.sfx('stop'); buzz([80, 40, 80]); socket.emit('game:action', { type: 'stop', payload: { answers: get() } }); };
+    const key = 'r' + v.round;
+    if (!($id('stop') && playKey === key)) { // monta UMA vez por rodada: recriar os campos fecharia o teclado e apagaria o que está sendo digitado
+      playKey = key;
+      const last = v.cats.length - 1, dr = v.draft || [];
+      $.innerHTML = head + `<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:5em;font-weight:800;color:var(--gold);line-height:1">${v.letter}</div><div id="t" style="font-size:3em;font-weight:800"></div></div>` +
+        v.cats.map((c, i) => `<label style="display:block;margin:10px 0 4px;font-weight:700">${esc(c)}</label><input class="field a" data-i="${i}" value="${esc(dr[i] || '')}" autocomplete="off" autocorrect="off" autocapitalize="words" enterkeyhint="${i === last ? 'done' : 'next'}" placeholder="${v.letter}…">`).join('') +
+        `<button class="btn" id="stop" style="margin-top:18px;background:#FF5A5F;color:#fff;font-size:2rem">STOP!</button>`;
+      const inputs = [...document.querySelectorAll('.a')], get = () => inputs.map((i) => i.value);
+      let deb; const send = () => { clearTimeout(deb); socket.emit('game:action', { type: 'draft', payload: { answers: get() } }); }; // sem vibrar a cada tecla
+      inputs.forEach((inp, i) => {
+        inp.oninput = () => { clearTimeout(deb); deb = setTimeout(send, 350); };
+        inp.onblur = send;
+        inp.onkeydown = (e) => { // tecla "Próximo"/Enter do teclado: vai para a categoria seguinte
+          if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); if (inputs[i + 1]) inputs[i + 1].focus(); else inp.blur(); }
+        };
+      });
+      $id('stop').onclick = () => { GA.sfx('stop'); buzz([80, 40, 80]); socket.emit('game:action', { type: 'stop', payload: { answers: get() } }); };
+    }
     const off = Date.now() - v.serverNow, t = $id('t');
     const u = () => { t.textContent = Math.max(0, Math.ceil((v.endsAt - (Date.now() - off)) / 1000)); };
     u(); tick = setInterval(u, 250); return;
@@ -111,51 +140,67 @@ function adedonha(head, vip) {
   if (v.phase === 'results') {
     const mine = v.ranking.findIndex((r) => r.id === S.me) + 1;
     $.innerHTML = head + `<h2>Olhe a TV 📺</h2><p>Você está em <b>${mine}º</b> lugar.</p>` +
-      (vip ? `<button class="btn" id="nx">Próxima rodada</button>` : '<p style="opacity:.7">Aguardando o ⭐…</p>');
-    if (vip) $id('nx').onclick = () => act('next'); return;
+      `<button class="btn" id="nx">Próxima rodada ➜</button>`;
+    $id('nx').onclick = () => act('next'); return;
   }
   $.innerHTML = head + `<h2>Fim de jogo! 🏆</h2>` + (vip ? `<button class="btn" id="end">Voltar ao menu</button>` : '');
   if (vip) $id('end').onclick = () => socket.emit('game:end');
 }
 
 // ================= LUDO (celular) =================
-const LC = ['#E5484D', '#3BB273', '#F2C14E', '#4D96FF']; let lastBuzz = '', PDIE = null, PN = null;
+let LC = ['#E5484D', '#3BB273', '#F2C14E', '#4D96FF'], LT = THEMES.classic, lastBuzz = '', PDIE = null, PN = null;
 function ludo(head, vip) {
-  const v = S.view, col = LC[v.seat], tp = S.players.find((p) => p.id === v.turn) || { name: '?' }, mine = v.pos[S.me];
-  const win = S.players.find((p) => p.id === v.winner);
+  const v = S.view; LT = THEMES[v.theme] || THEMES.classic; LC = LT.seats.map((x) => x.c);
+  const sd = LT.seats[v.seat], col = sd.c, mine = v.pos[S.me];
+  const nm = (id) => { const p = S.players.find((x) => x.id === id), t = LT.seats[v.seats[id]]; return t.e + ' ' + t.n + ' (' + (p ? p.name : '?') + ')'; };
   const k = v.turn + v.phase + v.dice;
   if (v.myTurn && v.phase === 'roll' && k !== lastBuzz) { lastBuzz = k; buzz([200, 80, 200]); GA.sfx('turn'); }
   if (!$id('pdie')) { // monta uma vez: o dado 3D precisa continuar na tela para animar
-    $.innerHTML = head + `<div id="ppanel" class="panel" style="text-align:center;border:5px solid ${col}"><div id="ptitle" style="font-size:1.5rem;font-weight:800"></div>
+    $.innerHTML = head + `<div id="ppanel" class="panel" style="text-align:center;border:5px solid ${col}"><div id="pwho" style="opacity:.8;font-size:.95rem"></div><div id="ptitle" style="font-size:1.4rem;font-weight:800"></div>
       <div id="pdie" style="display:flex;justify-content:center;padding:18px 0 12px"></div><div id="pmsg" style="opacity:.85;min-height:1.5em"></div></div><div id="pctl"></div>`;
     PDIE = Dice.create($id('pdie'), 84); PN = null;
   }
   $id('ppanel').style.borderColor = col; $id('pdie').style.setProperty('--pip', col);
-  $id('ptitle').textContent = v.phase === 'over' ? '🏆 ' + (win ? win.name : '') + ' venceu!' : v.myTurn ? 'Sua vez!' : 'Vez de ' + tp.name;
+  $id('pwho').textContent = 'Você é ' + sd.e + ' ' + sd.n;
+  $id('ptitle').textContent = v.phase === 'over' ? '🏆 ' + nm(v.winner) + ' venceu!' : v.myTurn ? 'Sua vez!' : 'Vez de ' + nm(v.turn);
   $id('pmsg').textContent = v.msg || '';
   if (PN === null) PDIE.set(v.dice || 1); else if (v.rollN !== PN) PDIE.roll(v.dice || 1);
   PN = v.rollN;
   let h = '';
-  if (v.myTurn && v.phase === 'roll') h += `<button class="btn" id="roll" style="margin-top:16px;font-size:2rem;padding:28px;background:${col}">🎲 ROLAR DADO</button>`;
+  if (v.myTurn && v.phase === 'roll') h += `<button class="btn" id="roll" style="margin-top:16px;font-size:2rem;padding:28px;background:${col};color:#14213D">🎲 ROLAR DADO</button>`;
   else if (v.myTurn && v.phase === 'move') {
     h += `<p style="text-align:center;font-weight:700;margin:14px 0 8px">Toque na peça que quer mover</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">` +
       mine.map((p, i) => { const ok = v.movable.includes(i), lbl = p === -1 ? 'Na base' : p === 56 ? 'Em casa 🏁' : p > 50 ? 'Reta final' : `Casa ${p + 1}`;
-        return `<button data-p="${i}" ${ok ? '' : 'disabled'} class="btn ${ok ? '' : 'ghost'}" style="background:${ok ? col : ''};padding:20px 8px"><span style="font-size:2.2rem">${i + 1}</span><br><small>${lbl}</small></button>`; }).join('') + '</div>';
+        return `<button data-p="${i}" ${ok ? '' : 'disabled'} class="btn ${ok ? '' : 'ghost'}" style="background:${ok ? col : ''};color:${ok ? '#14213D' : ''};padding:20px 8px"><span style="font-size:2.2rem">${i + 1}</span><br><small>${lbl}</small></button>`; }).join('') + '</div>';
   } else if (v.phase !== 'over') h += `<p style="text-align:center;opacity:.8;margin-top:14px">Suas peças: ${mine.filter((p) => p === -1).length} na base · ${mine.filter((p) => p >= 0 && p < 56).length} no tabuleiro · ${mine.filter((p) => p === 56).length}/4 em casa</p>`;
   if (v.phase === 'over' && vip) h += `<button class="btn" id="end" style="margin-top:16px">Voltar ao menu</button>`;
+  if (vip && v.phase !== 'over') h += `<button class="btn ghost" id="vw" style="margin-top:16px;font-size:1rem;padding:10px">🖥 TV: tabuleiro ${v.view === '2d' ? '2D → mudar para 3D' : '3D → mudar para 2D'}</button>`;
   $id('pctl').innerHTML = h;
   if ($id('roll')) $id('roll').onclick = () => { GA.sfx('dice'); act('roll'); };
   document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => { GA.sfx('move'); act('move', { piece: +b.dataset.p }); }));
   if ($id('end')) $id('end').onclick = () => socket.emit('game:end');
+  if ($id('vw')) $id('vw').onclick = () => socket.emit('game:setting', { key: 'view', value: v.view === '2d' ? '3d' : '2d' });
 }
 
 // ================= SOM e ENCERRAR PARTIDA (celular) =================
-let lastPh = '';
-function addAbort(show) {
-  if (!show) return;
-  const old = $id('abort'); if (old) old.remove();
-  $.insertAdjacentHTML('beforeend', '<button class="btn ghost" id="abort" style="margin-top:26px;font-size:1rem;padding:12px">⏹ Encerrar partida</button>');
-  $id('abort').onclick = () => { if (confirm('Encerrar a partida para todos e voltar ao menu?')) { GA.sfx('cancel'); socket.emit('game:end'); } };
+let lastPh = '', playKey = '';
+// botão no canto superior direito, ao lado do som: ⭐ em partida = Encerrar (para todos); os demais = Sair
+function updateTop() {
+  const b = $id('exitbtn'), me = S && S.players.find((p) => p.id === S.me);
+  if (!me) { b.hidden = true; return; }
+  const inGame = S.phase === 'game', vip = S.me === S.vip;
+  b.hidden = false;
+  if (inGame && vip) {
+    b.textContent = '⏹ Encerrar';
+    b.onclick = () => { if (confirm('Encerrar a partida para todos e voltar ao menu?')) { GA.sfx('cancel'); socket.emit('game:end'); } };
+  } else {
+    b.textContent = '🚪 Sair';
+    b.onclick = () => {
+      if (!confirm(inGame ? 'Sair da partida?' : 'Sair da sala?')) return;
+      GA.sfx('cancel'); socket.emit('player:leave'); localStorage.removeItem('me'); clearInterval(tick); S = null;
+      form = { room: '', name: form.name, color: form.color, err: 'Você saiu da sala.' }; joinScreen();
+    };
+  }
 }
 const sndBtn = $id('snd'); const sndIcon = () => (sndBtn.textContent = GA.isOn() ? '🔊' : '🔇'); sndIcon();
 sndBtn.onclick = () => { GA.unlock(); GA.toggle(); sndIcon(); };

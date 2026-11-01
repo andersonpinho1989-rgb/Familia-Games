@@ -28,10 +28,25 @@ const vipOf = (r) => {
   const c = [...r.players.values()].find((x) => x.connected);
   return c ? c.id : r.vip;
 };
+// configurações escolhidas pelo ⭐ (tempo, tema...) = padrões do jogo + o que foi alterado
+const settingsOf = (r) => {
+  if (!r.gameId) return {};
+  const out = {};
+  (GAMES[r.gameId].meta.options || []).forEach((o) => (out[o.key] = o.def));
+  return Object.assign(out, r.settings[r.gameId] || {});
+};
+function applySetting(r, key, value) {
+  if (!r.gameId) return;
+  const opt = (GAMES[r.gameId].meta.options || []).find((o) => o.key === key);
+  if (!opt || !opt.choices.includes(value)) return;   // só valores permitidos
+  if (r.game && !opt.live) return;                    // com a partida rolando, só opções "live" (ex.: 2D/3D)
+  (r.settings[r.gameId] = r.settings[r.gameId] || {})[key] = value;
+  push(r);
+}
 const publicPlayers = (r) => [...r.players.values()].map(({ id, name, color, connected }) => ({ id, name, color, connected }));
 
 function snapshot(r, pid) {
-  const base = { build: BUILD, code: r.code, phase: r.game ? 'game' : 'lobby', players: publicPlayers(r), vip: vipOf(r), games: list(), gameId: r.gameId };
+  const base = { build: BUILD, settings: settingsOf(r), picks: r.picks, code: r.code, phase: r.game ? 'game' : 'lobby', players: publicPlayers(r), vip: vipOf(r), games: list(), gameId: r.gameId };
   if (r.game) base.view = pid ? r.game.playerView(pid) : r.game.hostView();
   return pid ? { ...base, me: pid } : base;
 }
@@ -43,7 +58,7 @@ function push(r) {
   r.players.forEach((p) => p.sid && io.to(p.sid).emit('state', snapshot(r, p.id)));
 }
 
-const makeCtx = (r) => ({ players: () => publicPlayers(r), vip: () => vipOf(r), update: () => push(r) });
+const makeCtx = (r) => ({ players: () => publicPlayers(r), vip: () => vipOf(r), settings: () => settingsOf(r), picks: () => r.picks, update: () => push(r) });
 
 io.on('connection', (socket) => {
   let room = null, pid = null;
@@ -51,7 +66,7 @@ io.on('connection', (socket) => {
   // ---- TV ----
   const createRoom = () => {
     const code = newCode();
-    const r = { code, hostSid: socket.id, hostToken: crypto.randomUUID(), players: new Map(), vip: null, game: null, gameId: null, touched: Date.now() };
+    const r = { code, hostSid: socket.id, hostToken: crypto.randomUUID(), players: new Map(), vip: null, game: null, gameId: null, settings: {}, picks: {}, touched: Date.now() };
     rooms.set(code, r);
     return r;
   };
@@ -80,6 +95,7 @@ io.on('connection', (socket) => {
     const r = rooms.get(String(code || '').toUpperCase());
     if (!r) return ack({ error: 'Sala não encontrada. Confira o código.' });
     let p = playerId && r.players.get(playerId);
+    if (p && p.left) return ack({ error: 'Você saiu desta partida.' });
     if (!p) { // novo jogador
       if (r.game) return ack({ error: 'A partida já começou.' });
       if (r.players.size >= 8) return ack({ error: 'Sala cheia (máx. 8).' });
@@ -98,6 +114,26 @@ io.on('connection', (socket) => {
   socket.on('game:select', (gameId) => {
     if (!room || pid !== vipOf(room) || room.game || !GAMES[gameId]?.meta.available) return;
     room.gameId = gameId; push(room);
+  });
+
+  socket.on('game:setting', ({ key, value } = {}) => { if (room && pid === vipOf(room)) applySetting(room, key, value); });
+  socket.on('host:setting', ({ key, value } = {}) => { if (room && room.hostSid === socket.id) applySetting(room, key, value); });
+
+  socket.on('player:pick', (seat) => { // escolher cor/personagem antes de começar
+    if (!room || !pid || room.game || !room.gameId || !GAMES[room.gameId].meta.pick) return;
+    if (![0, 1, 2, 3].includes(seat)) return;
+    if (Object.entries(room.picks).some(([id, st]) => st === seat && id !== pid)) return;
+    room.picks[pid] = seat; push(room);
+  });
+
+  socket.on('player:leave', () => { // botão "Sair" do celular
+    if (!room || !pid) return;
+    const r = room, p = r.players.get(pid);
+    if (p) {
+      if (!r.game) { r.players.delete(pid); delete r.picks[pid]; r.vip = [...r.players.keys()][0] || null; }
+      else { p.connected = false; p.sid = null; p.left = true; r.game.onPlayerChange(); }
+    }
+    room = null; pid = null; push(r);
   });
 
   socket.on('game:start', () => {

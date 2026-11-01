@@ -1,21 +1,31 @@
 const GameEngine = require('./GameEngine');
 const CATS = ['Nome', 'Animal', 'Cidade/País', 'Cor', 'Fruta/Comida', 'Objeto', 'Profissão', 'Marca', 'Filme/Série'];
 const ALPHABET = 'ABCDEFGHIJLMNOPQRSTUVXZ'.split(''); // sem K, W, Y (quase impossíveis em português). Edite aqui se quiser todas as 26.
-const ROUND_MS = 60000, SPIN_MS = 3500, DRAW_MS = 20000, VALIDATE_MS = 45000, ROUNDS = 3;
+const SPIN_MS = 3500, DRAW_MS = 20000;
 const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 const shuffle = (a) => [...a].sort(() => Math.random() - 0.5);
 
 class Adedonha extends GameEngine {
-  static meta = { id: 'adedonha', name: 'Adedonha / Stop', emoji: '✍️', min: 2, max: 8, available: true };
+  static meta = {
+    id: 'adedonha', name: 'Adedonha / Stop', emoji: '✍️', min: 2, max: 8, available: true,
+    options: [
+      { key: 'roundSeconds', label: '⏱ Tempo por rodada', choices: [30, 45, 60, 90, 120, 180], def: 60, suffix: 's' },
+      { key: 'validateSeconds', label: '🔎 Tempo de validação', choices: [20, 30, 45, 60, 90], def: 45, suffix: 's' },
+      { key: 'rounds', label: '🔁 Rodadas', choices: [3, 5, 7], def: 3 },
+    ],
+  };
 
-  onStart() { this.scores = {}; this.used = []; this.round = 0; this.nextRound(); }
+  onStart() {
+    const st = this.ctx.settings();
+    this.roundMs = (st.roundSeconds || 60) * 1000; this.validateMs = (st.validateSeconds || 45) * 1000; this.rounds = st.rounds || 3;
+    this.scores = {}; this.used = []; this.round = 0; this.nextRound(); }
 
   clear() { clearTimeout(this.timer); }
 
   // 1) cada rodada começa com um jogador (em rodízio) girando a roleta de letras
   nextRound() {
     this.clear();
-    if (this.round >= ROUNDS) { this.phase = 'final'; return this.ctx.update(); }
+    if (this.round >= this.rounds) { this.phase = 'final'; return this.ctx.update(); }
     this.round++;
     const ps = this.ctx.players();
     const drawer = ps[(this.round - 1) % ps.length];
@@ -44,14 +54,14 @@ class Adedonha extends GameEngine {
 
   startPlay() {
     this.phase = 'playing';
-    this.endsAt = Date.now() + ROUND_MS;
-    this.timer = setTimeout(() => this.finish(null), ROUND_MS);
+    this.endsAt = Date.now() + this.roundMs;
+    this.timer = setTimeout(() => this.finish(null), this.roundMs);
     this.ctx.update();
   }
 
   onAction(pid, type, p = {}) {
     const clean = (a) => (Array.isArray(a) ? a : []).slice(0, this.cats ? this.cats.length : 0).map((x) => String(x).slice(0, 30));
-    if (this.phase === 'draw' && type === 'spin' && pid === this.drawer) this.spin();
+    if (this.phase === 'draw' && type === 'spin' && (pid === this.drawer || pid === this.ctx.vip())) this.spin(); // o ⭐ também pode girar
     else if (this.phase === 'playing') {
       if (type === 'draft') { this.drafts[pid] = clean(p.answers); this.ctx.update(); }
       if (type === 'stop') { if (p.answers) this.drafts[pid] = clean(p.answers); this.finish(pid); }
@@ -63,11 +73,12 @@ class Adedonha extends GameEngine {
         if (p.reject) this.votes[k] = 1; else delete this.votes[k];
         this.ctx.update();
       }
+      if (type === 'skip' && pid === this.ctx.vip()) return this.settle(); // ⭐ encerra a validação
       if (type === 'ready') {
         this.ready.add(pid);
         if (this.ctx.players().filter((x) => x.connected).every((x) => this.ready.has(x.id))) this.settle(); else this.ctx.update();
       }
-    } else if (this.phase === 'results' && type === 'next' && pid === this.ctx.vip()) this.nextRound();
+    } else if (this.phase === 'results' && type === 'next') this.nextRound(); // qualquer jogador avança (o 1º toque vale)
   }
 
   // fim da rodada: monta as respostas e abre a validação (pula se ninguém tem resposta válida)
@@ -85,8 +96,8 @@ class Adedonha extends GameEngine {
     this.votes = {}; this.ready = new Set();
     if (!ids.some((id) => this.cells[id].some((c) => c.a))) return this.settle();
     this.phase = 'validating';
-    this.endsAt = Date.now() + VALIDATE_MS;
-    this.timer = setTimeout(() => this.settle(), VALIDATE_MS);
+    this.endsAt = Date.now() + this.validateMs;
+    this.timer = setTimeout(() => this.settle(), this.validateMs);
     this.ctx.update();
   }
 
@@ -126,7 +137,7 @@ class Adedonha extends GameEngine {
   }
 
   base() {
-    return { phase: this.phase, round: this.round, rounds: ROUNDS, cats: this.cats, endsAt: this.endsAt, serverNow: Date.now(),
+    return { phase: this.phase, round: this.round, rounds: this.rounds, cats: this.cats, endsAt: this.endsAt, serverNow: Date.now(),
       drawer: this.drawer, alphabet: ALPHABET, ranking: this.ranking() };
   }
   hostView() {
@@ -143,7 +154,7 @@ class Adedonha extends GameEngine {
   playerView(pid) { // celulares só veem a letra quando a rodada começa
     const show = ['playing', 'results', 'final'].includes(this.phase);
     return { ...this.base(), letter: show || this.phase === 'validating' ? this.letter : null, used: this.phase === 'spinning' ? this.used.slice(0, -1) : this.used,
-      ...this.validation(), mine: this.phase === 'validating' ? Object.keys(this.votes).filter((k) => k.startsWith(pid + '|')).map((k) => k.slice(pid.length + 1)) : [] };
+      draft: this.phase === 'playing' ? (this.drafts[pid] || []) : [], ...this.validation(), mine: this.phase === 'validating' ? Object.keys(this.votes).filter((k) => k.startsWith(pid + '|')).map((k) => k.slice(pid.length + 1)) : [] };
   }
   destroy() { this.clear(); }
 }

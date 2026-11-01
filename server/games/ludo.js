@@ -4,13 +4,22 @@ const OFF = [0, 13, 26, 39], SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]), RIN
 const TURN_MS = 30000, K = process.env.LUDO_FAST ? 0.01 : 1; // K só acelera os testes
 
 class Ludo extends GameEngine {
-  static meta = { id: 'ludo', name: 'Ludo', emoji: '🎯', min: 2, max: 4, available: true };
+  static meta = {
+    id: 'ludo', name: 'Ludo', emoji: '🎯', min: 2, max: 4, available: true, pick: true, // pick: cada jogador escolhe sua cor/personagem
+    options: [
+      { key: 'theme', label: '🎨 Tema', choices: ['classic', 'transformers', 'shrek'], labels: { classic: 'Clássico', transformers: 'Transformers', shrek: 'Shrek' }, def: 'classic' },
+      { key: 'view', label: '🖥 Tabuleiro na TV', choices: ['3d', '2d'], labels: { '3d': '3D', '2d': '2D' }, def: '3d', live: true },
+    ],
+  };
 
   onStart() {
-    const ps = this.ctx.players();
-    const seats = ps.length === 2 ? [0, 2] : [0, 1, 2, 3].slice(0, ps.length); // 2 jogadores: lados opostos
-    this.order = ps.map((p) => p.id);
-    this.seat = Object.fromEntries(this.order.map((id, i) => [id, seats[i]]));
+    const ps = this.ctx.players(), picks = this.ctx.picks(), seat = {}, taken = new Set();
+    this.theme = this.ctx.settings().theme || 'classic';
+    ps.forEach((p) => { const st = picks[p.id]; if (Number.isInteger(st) && st >= 0 && st < 4 && !taken.has(st)) { taken.add(st); seat[p.id] = st; } });
+    const free = (ps.length === 2 ? [0, 2, 1, 3] : [0, 1, 2, 3]).filter((x) => !taken.has(x)); // 2 jogadores sem escolha: lados opostos
+    ps.forEach((p) => { if (seat[p.id] === undefined) seat[p.id] = free.shift(); });
+    this.seat = seat;
+    this.order = ps.map((p) => p.id).sort((a, b) => seat[a] - seat[b]); // a vez segue o sentido do tabuleiro
     this.pos = Object.fromEntries(this.order.map((id) => [id, [-1, -1, -1, -1]]));
     this.turn = 0; this.rollN = 0; this.sixes = 0; this.dice = null; this.mv = []; this.winner = null; this.msg = '';
     this.begin();
@@ -81,7 +90,7 @@ class Ludo extends GameEngine {
   }
 
   common() {
-    return { phase: this.phase, turn: this.cur(), dice: this.dice, rollN: this.rollN, msg: this.msg, pos: this.pos, seats: this.seat, order: this.order,
+    return { theme: this.theme, view: this.ctx.settings().view || '3d', phase: this.phase, turn: this.cur(), dice: this.dice, rollN: this.rollN, msg: this.msg, pos: this.pos, seats: this.seat, order: this.order,
       winner: this.winner, endsAt: this.endsAt, serverNow: Date.now(), movable: this.phase === 'move' ? this.mv : [] };
   }
   hostView() { return this.common(); }

@@ -3,9 +3,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="/socket.io/socket.io.js"></script><script src="/audio.js"></script><script src="/dice.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/ludo3d.js"></script></head>
+<script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/ludo3d.js"></script></head>
 <body><div id="ctl" style="position:fixed;top:1vw;right:1vw;display:flex;gap:10px;z-index:9">
   <button id="newroom" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">🔄 Encerrar tudo e gerar novo QR Code</button>
+  <button id="viewbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">🖥 Trocar para 2D</button>
   <button id="endbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">⏹ Encerrar partida</button>
   <button id="snd" class="btn ghost" style="width:auto;font-size:1.3rem;padding:8px 14px" aria-label="Som">🔊</button></div>
 <div id="sndhint" style="position:fixed;bottom:1.5vw;left:50%;transform:translateX(-50%);background:var(--gold);color:#14213D;font-weight:800;padding:10px 22px;border-radius:999px;z-index:9">🔊 Clique (ou aperte OK no controle) para ativar o som</div>
@@ -26,7 +27,7 @@ let BUILD = null;
 socket.on('state', (s) => {
   if (BUILD && s.build && s.build !== BUILD) return location.reload(); // servidor atualizado: pega a versão nova
   BUILD = s.build; const prev = S; S = s;
-  try { sounds(prev, s); } catch (e) {}
+  try { GA.setTheme(themeOf(s)); sounds(prev, s); } catch (e) {}
   try { render(); } catch (e) { $.innerHTML = '<h1>Erro na tela da TV</h1><pre style="white-space:pre-wrap;color:#FCA311">' + esc(e.stack || e.message) + '</pre>'; console.error(e); }
 });
 
@@ -34,6 +35,8 @@ function render() {
   clearInterval(tick); clearTimeout(spinT);
   document.getElementById('endbtn').hidden = S.phase !== 'game';
   document.getElementById('newroom').hidden = S.phase !== 'lobby';
+  const vb = document.getElementById('viewbtn'); vb.hidden = !(S.phase === 'game' && S.gameId === 'ludo');
+  vb.textContent = S.settings && S.settings.view === '2d' ? '🖥 Trocar para 3D' : '🖥 Trocar para 2D';
   if (L3 && !(S.phase === 'game' && S.gameId === 'ludo')) { L3.destroy(); L3 = null; }
   if (S.phase === 'lobby') return lobby();
   if (S.gameId === 'adedonha') return adedonha();
@@ -41,14 +44,27 @@ function render() {
   $.innerHTML = '<h1>Jogo sem tela na TV: ' + esc(S.gameId) + '</h1>';
 }
 
+const optTxt = (o, val) => (o.labels && o.labels[val]) || (val + (o.suffix || ''));
+function gameLine() {
+  if (!S.gameId) return 'O jogador ⭐ escolhe o jogo no celular.';
+  const g = S.games.find((x) => x.id === S.gameId), st = S.settings || {};
+  return 'Jogo: <b>' + esc(g.name) + '</b>' + (g.options || []).map((o) => ' · ' + esc(o.label) + ': <b>' + esc(optTxt(o, st[o.key])) + '</b>').join('') + ' — o ⭐ pode iniciar.';
+}
+function pickTxt(p) {
+  const g = S.games.find((x) => x.id === S.gameId);
+  if (!g || !g.pick || !S.picks || S.picks[p.id] === undefined) return '';
+  const sd = (THEMES[(S.settings || {}).theme] || THEMES.classic).seats[S.picks[p.id]];
+  return ' ' + sd.e + ' ' + sd.n;
+}
+const themeOf = (s) => (s.phase === 'game' && s.gameId === 'ludo' && s.view ? s.view.theme : 'classic');
 function lobby() {
   const url = `${location.origin}/play.html?room=${S.code}`;
   $.innerHTML = `<div style="display:grid;grid-template-columns:1fr auto;gap:4vw;align-items:center">
     <div><h1 style="font-size:2em;margin:0">Entre pelo celular</h1>
       <p style="opacity:.8;margin:.2em 0 1em">Escaneie o QR Code ou abra <b>${esc(location.host)}/play.html</b></p>
       <div style="font-size:7em;font-weight:800;letter-spacing:.12em;color:var(--gold);line-height:1">${S.code}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:1.2em">${S.players.map((p) => chip(p, p.id === S.vip ? ' ⭐' : '')).join('') || '<span style="opacity:.6">Aguardando jogadores…</span>'}</div>
-      <p style="opacity:.8;margin-top:1.5em">${S.gameId ? 'Jogo: <b>' + esc(S.games.find((g) => g.id === S.gameId).name) + '</b> — o ⭐ pode iniciar.' : 'O jogador ⭐ escolhe o jogo no celular.'}</p></div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:1.2em">${S.players.map((p) => chip(p, (p.id === S.vip ? ' ⭐' : '') + pickTxt(p))).join('') || '<span style="opacity:.6">Aguardando jogadores…</span>'}</div>
+      <p style="opacity:.8;margin-top:1.5em">${gameLine()}</p></div>
     <div id="qr" style="background:#fff;padding:18px;border-radius:24px"></div></div>`;
   new QRCode(document.getElementById('qr'), { text: url, width: 360, height: 360 });
 }
@@ -90,14 +106,14 @@ function adedonha() {
       <div style="overflow:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 8px">
       <tr><th></th>${v.cats.map((c) => `<th style="text-align:left;opacity:.7">${esc(c)}</th>`).join('')}<th>Total</th></tr>
       ${S.players.map((p) => `<tr class="panel"><td>${chip(p)}</td>${v.results[p.id].cells.map((c) => `<td style="color:${c.pts ? (c.pts === 10 ? 'var(--ok)' : 'var(--gold)') : '#FF5A5F'}"><span style="${c.st === 'rejected' || c.st === 'invalid' ? 'text-decoration:line-through' : ''}">${esc(c.text) || '—'}</span> <b>${c.pts ? '+' + c.pts : ''}</b>${c.st === 'rejected' ? ' <small>contestada ✗' + c.rejects + '</small>' : c.st === 'invalid' ? ' <small>inválida</small>' : ''}</td>`).join('')}<td><b style="font-size:1.4em">${v.results[p.id].total}</b></td></tr>`).join('')}</table></div>
-      <p style="opacity:.7">10 pts = resposta única · 5 pts = repetida · 0 = vazia ou letra errada. O ⭐ toca “Próxima rodada” no celular.</p>`;
+      <p style="opacity:.7">10 pts = resposta única · 5 pts = repetida · 0 = vazia ou letra errada. Qualquer jogador toca em “Próxima rodada ➜” no celular.</p>`;
     return;
   }
   $.innerHTML = `<h1 style="font-size:3em;margin:0 0 .4em">🏆 Resultado final</h1>${rank(v.ranking)}`;
 }
 
 // ================= LUDO (TV) =================
-const LC = ['#E5484D', '#3BB273', '#F2C14E', '#4D96FF'], OFF = [0, 13, 26, 39], STARS = [8, 21, 34, 47];
+let LC = ['#E5484D', '#3BB273', '#F2C14E', '#4D96FF'], LT = THEMES.classic, OFF = [0, 13, 26, 39], STARS = [8, 21, 34, 47];
 const RING = (() => { const r = []; for (let x = 1; x <= 5; x++) r.push([x, 6]); for (let y = 5; y >= 0; y--) r.push([6, y]); r.push([7, 0], [8, 0]);
   for (let y = 1; y <= 5; y++) r.push([8, y]); for (let x = 9; x <= 14; x++) r.push([x, 6]); r.push([14, 7], [14, 8]);
   for (let x = 13; x >= 9; x--) r.push([x, 8]); for (let y = 9; y <= 14; y++) r.push([8, y]); r.push([7, 14], [6, 14]);
@@ -111,16 +127,17 @@ function cellOf(seat, p, i) {
   return [7.5 + d[0] + (seat % 2 ? s : 0), 7.5 + d[1] + (seat % 2 ? 0 : s)];
 }
 function buildLudo(v) {
-  let s = '<svg id="lboard" viewBox="0 0 15 15" style="height:100%;width:100%;background:#1B2B52;border-radius:18px">';
+  let s = '<svg id="lboard" viewBox="0 0 15 15" style="height:100%;width:100%;background:' + LT.bg + ';border-radius:18px">';
   for (let k = 0; k < 4; k++) {
     const ox = [0, 9, 9, 0][k], oy = [0, 0, 9, 9][k], used = v.order.some((id) => v.seats[id] === k);
-    s += `<rect x="${ox}" y="${oy}" width="6" height="6" fill="${LC[k]}" opacity="${used ? 1 : .25}"/><rect x="${ox + .7}" y="${oy + .7}" width="4.6" height="4.6" rx=".6" fill="#F8F5EE" opacity="${used ? 1 : .35}"/>`;
+    s += `<rect x="${ox}" y="${oy}" width="6" height="6" fill="${LC[k]}" opacity="${used ? 1 : .25}"/><rect x="${ox + .7}" y="${oy + .7}" width="4.6" height="4.6" rx=".6" fill="${LT.paper}" opacity="${used ? 1 : .35}"/>`;
+    if (used) s += `<text x="${ox + 3}" y="${oy + 3.6}" text-anchor="middle" font-size="2.4">${LT.seats[k].e}</text>`;
     for (let i = 0; i < 4; i++) { const [cx, cy] = cellOf(k, -1, i); s += `<circle cx="${cx}" cy="${cy}" r=".5" fill="${LC[k]}" opacity=".3"/>`; }
-    for (let j = 0; j < 5; j++) { const [x, y] = COL(k, j); s += `<rect x="${x}" y="${y}" width="1" height="1" fill="${LC[k]}" stroke="#1B2B52" stroke-width=".06"/>`; }
+    for (let j = 0; j < 5; j++) { const [x, y] = COL(k, j); s += `<rect x="${x}" y="${y}" width="1" height="1" fill="${LC[k]}" stroke="${LT.bg}" stroke-width=".06"/>`; }
   }
   RING.forEach(([x, y], idx) => {
     const st = OFF.indexOf(idx);
-    s += `<rect x="${x}" y="${y}" width="1" height="1" fill="${st >= 0 ? LC[st] : '#F8F5EE'}" stroke="#1B2B52" stroke-width=".06"/>`;
+    s += `<rect x="${x}" y="${y}" width="1" height="1" fill="${st >= 0 ? LC[st] : LT.paper}" stroke="${LT.bg}" stroke-width=".06"/>`;
     if (STARS.includes(idx)) s += `<text x="${x + .5}" y="${y + .72}" text-anchor="middle" font-size=".7" fill="#1B2B52">★</text>`;
   });
   const T = [[6, 6, 6, 9], [6, 6, 9, 6], [9, 6, 9, 9], [6, 9, 9, 9]];
@@ -136,9 +153,21 @@ function placeLudo(v) {
   Object.values(groups).forEach((g) => g.length > 1 && g.forEach((it, k) => { const a = k * 2 * Math.PI / g.length; it.x += Math.cos(a) * .24; it.y += Math.sin(a) * .24; }));
   items.forEach((it) => { const el = document.getElementById(`pc-${it.n}-${it.i}`); el.style.transform = `translate(${it.x}px,${it.y}px)`; el.classList.toggle('hl', v.turn === it.id && v.movable.includes(it.i)); });
 }
-let LDIE = null, LD_N = null, L3 = null;
+let LDIE = null, LD_N = null, L3 = null, LMODE = null;
+function applyLudoTheme(id) { LT = THEMES[id] || THEMES.classic; LC = LT.seats.map((x) => x.c); }
+const who = (v, id) => { const sd = LT.seats[v.seats[id]]; return sd.e + ' ' + sd.n + ' (' + byId(id).name + ')'; };
+function buildBoard(v, want) { // monta o tabuleiro 3D ou 2D dentro de #lwrap
+  const wrap = document.getElementById('lwrap');
+  if (L3) { L3.destroy(); L3 = null; }
+  wrap.innerHTML = '';
+  if (want === '3d') { try { L3 = window.Ludo3D ? Ludo3D.create(wrap, v, { cellOf, LC, LT, RING, OFF, STARS, COL }) : null; } catch (e) { console.error(e); L3 = null; } }
+  if (!L3) wrap.innerHTML = buildLudo(v); // 2D escolhido (ou sem WebGL)
+  LMODE = want;
+}
 function ludo() {
   const v = S.view, $e = (i) => document.getElementById(i);
+  applyLudoTheme(v.theme);
+  const want = v.view === '2d' ? '2d' : '3d';
   if (!$e('lwrap')) {
     $.innerHTML = `<div style="display:flex;gap:2.5vw;align-items:center;justify-content:center;min-height:92vh">
       <div id="lwrap" style="flex:none;width:min(64vw,112vh);height:min(56vw,98vh)"></div>
@@ -149,19 +178,18 @@ function ludo() {
           <div id="lmsg" style="min-height:1.6em;opacity:.9"></div>
           <div id="clock" style="font-size:1.6em;font-weight:800;opacity:.7"></div></div>
         <div id="lplayers"></div></div></div>`;
-    LDIE = Dice.create($e('ldice'), 110); LD_N = null; L3 = null;
-    try { L3 = window.Ludo3D ? Ludo3D.create($e('lwrap'), v, { cellOf, LC, RING, OFF, STARS, COL }) : null; } catch (e) { console.error(e); L3 = null; }
-    if (!L3) $e('lwrap').innerHTML = buildLudo(v); // sem WebGL: tabuleiro 2D
+    LDIE = Dice.create($e('ldice'), 110); LD_N = null; L3 = null; LMODE = null;
   }
+  if (LMODE !== want) buildBoard(v, want);
   if (L3) L3.update(v); else placeLudo(v);
   const col = LC[v.seats[v.turn]];
   $e('lpanel').style.borderColor = col; $e('ldice').style.setProperty('--pip', col);
-  $e('ltitle').textContent = v.phase === 'over' ? '🏆 ' + byId(v.winner).name + ' venceu!' : 'Vez de ' + byId(v.turn).name;
+  $e('ltitle').textContent = v.phase === 'over' ? '🏆 ' + who(v, v.winner) + ' venceu!' : 'Vez de ' + who(v, v.turn);
   if (LD_N === null) LDIE.set(v.dice || 1); else if (v.rollN !== LD_N) LDIE.roll(v.dice || 1);
   LD_N = v.rollN;
   $e('lmsg').textContent = v.msg || (v.phase === 'move' ? 'Escolhendo a peça…' : v.phase === 'roll' ? 'Role o dado no celular 🎲' : '');
-  $e('lplayers').innerHTML = v.order.map((id) => { const done = v.pos[id].filter((x) => x === 56).length;
-    return `<div style="margin:8px 0">${chip(byId(id), ` <b>${v.turn === id && v.phase !== 'over' ? '▶' : ''} ${done}/4 🏁</b>`)}</div>`; }).join('');
+  $e('lplayers').innerHTML = v.order.map((id) => { const sd = LT.seats[v.seats[id]], done = v.pos[id].filter((x) => x === 56).length;
+    return `<div style="margin:8px 0"><span class="chip"><i class="dot" style="background:${sd.c}"></i>${sd.e} ${esc(sd.n)} · ${esc(byId(id).name)} <b>${v.turn === id && v.phase !== 'over' ? '▶' : ''} ${done}/4 🏁</b></span></div>`; }).join('');
   if (v.phase !== 'over') clock(v.endsAt, v.serverNow); else $e('clock').textContent = '';
 }
 
@@ -231,4 +259,6 @@ newBtn.onclick = () => {
   clearTimeout(newArm); newArm = null; newBtn.textContent = NEWTXT;
   socket.emit('host:reset', null, (r) => { sessionStorage.setItem('room', JSON.stringify(r)); GA.sfx('cancel'); });
 };
+
+document.getElementById('viewbtn').onclick = () => socket.emit('host:setting', { key: 'view', value: S.settings && S.settings.view === '2d' ? '3d' : '2d' });
 </script></body></html>

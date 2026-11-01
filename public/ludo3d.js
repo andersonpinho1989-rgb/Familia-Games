@@ -18,11 +18,12 @@
   function boardTexture(H, used) {
     var S = 100, cv = document.createElement('canvas'); cv.width = cv.height = S * 15;
     var c = cv.getContext('2d'), k, i, j;
-    c.fillStyle = '#1B2B52'; c.fillRect(0, 0, S * 15, S * 15);
+    c.fillStyle = H.LT.bg; c.fillRect(0, 0, S * 15, S * 15);
     for (k = 0; k < 4; k++) {
       var ox = [0, 9, 9, 0][k] * S, oy = [0, 0, 9, 9][k] * S, on = used[k];
       c.globalAlpha = on ? 1 : 0.28; c.fillStyle = H.LC[k]; rr(c, ox + 8, oy + 8, 6 * S - 16, 6 * S - 16, 46); c.fill();
-      c.fillStyle = '#F8F5EE'; rr(c, ox + 70, oy + 70, 6 * S - 140, 6 * S - 140, 36); c.fill();
+      c.fillStyle = H.LT.paper; rr(c, ox + 70, oy + 70, 6 * S - 140, 6 * S - 140, 36); c.fill();
+      if (on) { c.globalAlpha = 0.9; c.font = '170px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#000'; c.fillText(H.LT.seats[k].e, ox + 3 * S, oy + 3 * S + 6); }
       c.globalAlpha = on ? 0.4 : 0.12; c.fillStyle = H.LC[k];
       for (i = 0; i < 4; i++) { var p = H.cellOf(k, -1, i); c.beginPath(); c.arc(p[0] * S, p[1] * S, 46, 0, 7); c.fill(); }
       c.globalAlpha = 1;
@@ -30,7 +31,7 @@
     }
     H.RING.forEach(function (cell, idx) {
       var st = H.OFF.indexOf(idx), x = cell[0] * S, y = cell[1] * S;
-      c.fillStyle = st >= 0 ? H.LC[st] : '#F8F5EE'; rr(c, x + 6, y + 6, S - 12, S - 12, 14); c.fill();
+      c.fillStyle = st >= 0 ? H.LC[st] : H.LT.paper; rr(c, x + 6, y + 6, S - 12, S - 12, 14); c.fill();
       if (H.STARS.indexOf(idx) >= 0) { c.fillStyle = '#C9A227'; star(c, x + S / 2, y + S / 2 + 2, 34, 15); c.fill(); }
       if (st >= 0) { c.fillStyle = 'rgba(255,255,255,.85)'; c.beginPath(); c.arc(x + S / 2, y + S / 2, 16, 0, 7); c.fill(); }
     });
@@ -51,18 +52,32 @@
     return new THREE.CanvasTexture(cv);
   }
 
-  // peão torneado (lathe) + cabeça esférica + anel dourado quando pode ser movido
-  function pawn(color, num) {
-    var g = new THREE.Group();
-    var prof = [[0, 0], [0.3, 0], [0.31, 0.05], [0.24, 0.12], [0.16, 0.3], [0.21, 0.36], [0.12, 0.42], [0, 0.45]]
-      .map(function (p) { return new THREE.Vector2(p[0], p[1]); });
-    var mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.32, metalness: 0.15, emissive: 0x000000 });
-    var body = new THREE.Mesh(new THREE.LatheGeometry(prof, 24), mat); body.castShadow = true; g.add(body);
-    var head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 16), mat); head.position.y = 0.56; head.castShadow = true; g.add(head);
-    var ring = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.05, 8, 32), new THREE.MeshBasicMaterial({ color: 0xFCA311 }));
+  // peão do tema: classic (torneado), robot (robô genérico de caixas), round (barrigudo)
+  function pawn(color, num, shape) {
+    var g = new THREE.Group(), top;
+    var mat = new THREE.MeshStandardMaterial({ color: color, roughness: shape === 'robot' ? 0.3 : 0.4, metalness: shape === 'robot' ? 0.65 : 0.12, emissive: 0x000000 });
+    function box(w, h, d, x, y, z, m) { var b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m || mat); b.position.set(x, y, z); b.castShadow = true; g.add(b); return b; }
+    if (shape === 'robot') {
+      box(0.5, 0.5, 0.36, 0, 0.3, 0);                       // tronco
+      box(0.14, 0.34, 0.16, -0.34, 0.32, 0); box(0.14, 0.34, 0.16, 0.34, 0.32, 0); // braços
+      box(0.34, 0.24, 0.3, 0, 0.7, 0);                      // cabeça
+      box(0.28, 0.07, 0.05, 0, 0.72, 0.16, new THREE.MeshStandardMaterial({ color: 0x66e6ff, emissive: 0x2aa6c8, roughness: 0.2 })); // visor
+      box(0.05, 0.14, 0.05, 0, 0.9, 0);                     // antena
+      top = 1.25;
+    } else {
+      var prof = (shape === 'round'
+        ? [[0, 0], [0.3, 0], [0.4, 0.1], [0.4, 0.26], [0.3, 0.4], [0.14, 0.48], [0, 0.5]]
+        : [[0, 0], [0.3, 0], [0.31, 0.05], [0.24, 0.12], [0.16, 0.3], [0.21, 0.36], [0.12, 0.42], [0, 0.45]])
+        .map(function (p) { return new THREE.Vector2(p[0], p[1]); });
+      var body = new THREE.Mesh(new THREE.LatheGeometry(prof, 24), mat); body.castShadow = true; g.add(body);
+      var head = new THREE.Mesh(new THREE.SphereGeometry(shape === 'round' ? 0.22 : 0.17, 20, 16), mat);
+      head.position.y = shape === 'round' ? 0.66 : 0.56; head.castShadow = true; g.add(head);
+      top = shape === 'round' ? 1.2 : 1.08;
+    }
+    var ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 8, 32), new THREE.MeshBasicMaterial({ color: 0xFCA311 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; ring.visible = false; g.add(ring);
     var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(num), depthTest: false }));
-    sp.scale.set(0.42, 0.42, 1); sp.position.y = 1.08; sp.renderOrder = 10; g.add(sp);
+    sp.scale.set(0.42, 0.42, 1); sp.position.y = top; sp.renderOrder = 10; g.add(sp);
     g.scale.set(1.15, 1.15, 1.15);
     return { g: g, mat: mat, ring: ring };
   }
@@ -90,9 +105,9 @@
 
     var used = [false, false, false, false];
     v.order.forEach(function (id) { used[v.seats[id]] = true; });
-    var wood = new THREE.Mesh(new THREE.BoxGeometry(16.2, 0.9, 16.2), new THREE.MeshStandardMaterial({ color: 0x5b3a22, roughness: 0.7 }));
+    var wood = new THREE.Mesh(new THREE.BoxGeometry(16.2, 0.9, 16.2), new THREE.MeshStandardMaterial({ color: H.LT.wood, roughness: 0.7 }));
     wood.position.y = -0.1; wood.receiveShadow = true; scene.add(wood);
-    var slab = new THREE.Mesh(new THREE.BoxGeometry(15.4, 0.16, 15.4), new THREE.MeshStandardMaterial({ color: 0x1B2B52, roughness: 0.5 }));
+    var slab = new THREE.Mesh(new THREE.BoxGeometry(15.4, 0.16, 15.4), new THREE.MeshStandardMaterial({ color: H.LT.slab, roughness: 0.5 }));
     slab.position.y = 0.43; slab.receiveShadow = true; scene.add(slab);
     var top = new THREE.Mesh(new THREE.PlaneGeometry(15, 15), new THREE.MeshStandardMaterial({ map: boardTexture(H, used), roughness: 0.55 }));
     top.rotation.x = -Math.PI / 2; top.position.y = SURF - 0.005; top.receiveShadow = true; scene.add(top);
@@ -103,7 +118,7 @@
     var pieces = [];
     v.order.forEach(function (id, n) {
       for (var i = 0; i < 4; i++) {
-        var pw = pawn(H.LC[v.seats[id]], i + 1); scene.add(pw.g);
+        var pw = pawn(H.LC[v.seats[id]], i + 1, H.LT.pawn); scene.add(pw.g);
         pieces.push({ id: id, i: i, seat: v.seats[id], g: pw.g, mat: pw.mat, ring: pw.ring, x: 7.5, y: 7.5, hop: 0, queue: [], seg: null, p: undefined, tx: 0, ty: 0, hl: false });
       }
     });
@@ -124,9 +139,9 @@
         var m = 0; corners.forEach(function (c) { var p = c.clone().project(cam); m = Math.max(m, Math.abs(p.x), Math.abs(p.y)); });
         if (m > 0.93) dist *= 1.04; else if (m < 0.84) dist *= 0.97; else break;
       }
-      D = dist;
+      D = dist; place(D, 0);
     }
-    fit();
+    fit(); // câmera fixa: o tabuleiro não se mexe (só os peões)
     function onResize() {
       var w = container.clientWidth, h = container.clientHeight; if (!w || !h) return;
       renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); fit();
@@ -179,7 +194,6 @@
         pc.g.position.set(pc.x - 7.5, SURF + pc.hop + bob, pc.y - 7.5);
         pc.ring.rotation.z = now * 0.003;
       });
-      orb.rotation.y = now * 0.001;
     }
 
     var raf = 0, alive = true, last = (window.performance || Date).now();
@@ -188,7 +202,6 @@
       raf = requestAnimationFrame(loop);
       var t = now || Date.now(), dt = Math.min(0.05, Math.max(0, (t - last) / 1000)); last = t;
       step(dt, t);
-      place(D, Math.sin(t * 0.00022) * 0.16); // leve balanço da câmera dá a sensação 3D
       renderer.render(scene, cam);
     }
     raf = requestAnimationFrame(loop);
@@ -200,6 +213,7 @@
         try { renderer.dispose(); } catch (e) {}
         if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
       },
+      _cam: function () { return [cam.position.x, cam.position.y, cam.position.z]; },
       _pos: function () { return pieces.map(function (p) { return [p.x, p.y, p.queue.length, !!p.seg]; }); }
     };
   }

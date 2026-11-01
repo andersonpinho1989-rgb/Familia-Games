@@ -32,3 +32,16 @@ registre em `server/games/index.js` e renderize a view em `public/index.html` (T
 - **Encerrar tudo (tela inicial):** botão "🔄 Encerrar tudo e gerar novo QR Code" no canto da TV (toque duas vezes). Fecha a sala, desconecta todos os celulares (eles voltam para a tela de entrada com um aviso) e mostra um novo código/QR para escanear de novo.
 - **Adedonha – validação:** ao fim de cada rodada abre a fase "Validação" (45 s). Cada jogador vê, no celular, as respostas dos outros e toca ✗ nas que considera erradas. A resposta é anulada se **mais da metade dos outros jogadores** contestar. Respostas com letra errada/curtas já aparecem como inválidas. A fase termina quando todos tocam "Terminei de validar" ou o tempo acaba. Repetidas valem 5, únicas 10.
 - **Ludo 3D:** tabuleiro 3D (Three.js carregado da CDN cdnjs) com peões torneados, mesa de madeira, câmera com leve balanço e peões que pulam casa por casa. Se o navegador da TV não tiver WebGL ou a CDN estiver bloqueada, a TV usa automaticamente o tabuleiro 2D. O dado é um cubo 3D em CSS que rola e cai na face sorteada (TV e celular).
+
+## Adedonha: digitação e avanço
+- Os campos da rodada são montados **uma única vez**; novas atualizações do servidor não recriam os campos (o teclado não fecha e o texto não some). O rascunho volta se o celular reconectar.
+- Teclado: a tecla **Próximo/Enter** pula para a categoria seguinte; no último campo, fecha o teclado.
+- **Próxima rodada ➜**: qualquer jogador pode tocar. O ⭐ também pode girar a letra no lugar do sorteador e encerrar a validação antes do tempo.
+
+## Temas, 2D/3D, tempos e botão de sair
+- **Ludo – 2D/3D:** o tabuleiro 3D agora fica **parado** (só os peões se movem). Troque entre 3D e 2D a qualquer momento: botão "🖥 Trocar para 2D/3D" no topo da TV, ou pelo celular do ⭐ (também no lobby, em "Tabuleiro na TV").
+- **Ludo – temas:** Clássico, Transformers e Shrek (o ⭐ escolhe no lobby). Cada cor é um personagem (nome + emoji + cor), e **cada jogador escolhe a sua cor/personagem** no celular antes de começar. Quem não escolher recebe uma cor livre. A ordem das jogadas segue o sentido do tabuleiro.
+- **Áudio por tema:** música de fundo e efeitos mudam conforme o tema (clássico, robótico/metálico, folk/medieval). São composições originais sintetizadas no navegador, no estilo do tema, e não as músicas oficiais. Os temas ficam em `public/themes.js` (nomes, cores, emojis, formato do peão) e a parte sonora em `public/audio.js`. Para usar arte ou músicas próprias, edite esses arquivos.
+- **Adedonha – tempos:** no lobby o ⭐ escolhe tempo por rodada (30 s a 3 min), tempo de validação (20 a 90 s) e número de rodadas (3, 5 ou 7).
+- **Botão de sair:** fica no canto superior direito do celular, ao lado do 🔊. Para o ⭐ durante a partida é **⏹ Encerrar** (encerra para todos); para os demais é **🚪 Sair** (deixa a sala; no meio da partida o servidor joga por ele no Ludo).
+- Novas opções para outros jogos: declare `options` (e `pick`) no `static meta` do jogo; as telas de lobby as montam sozinhas.
