@@ -6,7 +6,8 @@ const { Server } = require('socket.io');
 const { GAMES, list } = require('./games');
 
 const app = express();
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../public'), { etag: false, setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+const BUILD = String(Date.now());
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 
@@ -20,10 +21,17 @@ const newCode = () => {
   return c;
 };
 
+// "VIP efetivo": se o ⭐ caiu, o primeiro jogador conectado assume (ninguém fica sem poder encerrar/iniciar)
+const vipOf = (r) => {
+  const v = r.players.get(r.vip);
+  if (v && v.connected) return r.vip;
+  const c = [...r.players.values()].find((x) => x.connected);
+  return c ? c.id : r.vip;
+};
 const publicPlayers = (r) => [...r.players.values()].map(({ id, name, color, connected }) => ({ id, name, color, connected }));
 
 function snapshot(r, pid) {
-  const base = { code: r.code, phase: r.game ? 'game' : 'lobby', players: publicPlayers(r), vip: r.vip, games: list(), gameId: r.gameId };
+  const base = { build: BUILD, code: r.code, phase: r.game ? 'game' : 'lobby', players: publicPlayers(r), vip: vipOf(r), games: list(), gameId: r.gameId };
   if (r.game) base.view = pid ? r.game.playerView(pid) : r.game.hostView();
   return pid ? { ...base, me: pid } : base;
 }
@@ -34,7 +42,7 @@ function push(r) {
   r.players.forEach((p) => p.sid && io.to(p.sid).emit('state', snapshot(r, p.id)));
 }
 
-const makeCtx = (r) => ({ players: () => publicPlayers(r), vip: () => r.vip, update: () => push(r) });
+const makeCtx = (r) => ({ players: () => publicPlayers(r), vip: () => vipOf(r), update: () => push(r) });
 
 io.on('connection', (socket) => {
   let room = null, pid = null;
@@ -76,17 +84,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('game:select', (gameId) => {
-    if (!room || pid !== room.vip || room.game || !GAMES[gameId]?.meta.available) return;
+    if (!room || pid !== vipOf(room) || room.game || !GAMES[gameId]?.meta.available) return;
     room.gameId = gameId; push(room);
   });
 
   socket.on('game:start', () => {
-    if (!room || pid !== room.vip || room.game || !room.gameId) return;
+    if (!room || pid !== vipOf(room) || room.game || !room.gameId) return;
     const { min, max } = GAMES[room.gameId].meta;
     const n = room.players.size;
     if (n < min || n > max) return socket.emit('toast', `Este jogo precisa de ${min} a ${max} jogadores.`);
     room.game = new GAMES[room.gameId](makeCtx(room));
     room.game.onStart(); push(room);
+  });
+
+  socket.on('host:end', () => { // TV encerra a partida a qualquer momento
+    if (!room || room.hostSid !== socket.id || !room.game) return;
+    room.game.destroy(); room.game = null; room.gameId = null; push(room);
   });
 
   socket.on('game:action', ({ type, payload } = {}) => {
@@ -95,7 +108,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('game:end', () => { // VIP volta ao lobby
-    if (!room?.game || pid !== room.vip) return;
+    if (!room?.game || pid !== vipOf(room)) return;
     room.game.destroy(); room.game = null; room.gameId = null; push(room);
   });
 

@@ -3,11 +3,15 @@
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="/socket.io/socket.io.js"></script></head>
-<body><div id="app" style="font-size:clamp(18px,1.6vw,34px);padding:3vw"></div>
+<script src="/socket.io/socket.io.js"></script><script src="/audio.js"></script></head>
+<body><div id="ctl" style="position:fixed;top:1vw;right:1vw;display:flex;gap:10px;z-index:9">
+  <button id="endbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">⏹ Encerrar partida</button>
+  <button id="snd" class="btn ghost" style="width:auto;font-size:1.3rem;padding:8px 14px" aria-label="Som">🔊</button></div>
+<div id="sndhint" style="position:fixed;bottom:1.5vw;left:50%;transform:translateX(-50%);background:var(--gold);color:#14213D;font-weight:800;padding:10px 22px;border-radius:999px;z-index:9">🔊 Clique (ou aperte OK no controle) para ativar o som</div>
+<div id="app" style="font-size:clamp(18px,1.6vw,34px);padding:3vw"></div>
 <script>
 const $ = document.getElementById('app'); const socket = io(); let S = null, tick = null;
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const chip = (p, extra = '') => `<span class="chip ${p.connected === false ? 'off' : ''}"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}${extra}</span>`;
 const byId = (id) => S.players.find((p) => p.id === id) || { name: '?', color: '#888' };
 
@@ -17,13 +21,21 @@ function start() {
   if (saved) socket.emit('host:resume', saved, (r) => r.error && create()); else create();
 }
 socket.on('connect', start); // roda também a cada reconexão automática
-socket.on('state', (s) => { S = s; render(); });
+let BUILD = null;
+socket.on('state', (s) => {
+  if (BUILD && s.build && s.build !== BUILD) return location.reload(); // servidor atualizado: pega a versão nova
+  BUILD = s.build; const prev = S; S = s;
+  try { sounds(prev, s); } catch (e) {}
+  try { render(); } catch (e) { $.innerHTML = '<h1>Erro na tela da TV</h1><pre style="white-space:pre-wrap;color:#FCA311">' + esc(e.stack || e.message) + '</pre>'; console.error(e); }
+});
 
 function render() {
-  clearInterval(tick);
+  clearInterval(tick); clearTimeout(spinT);
+  document.getElementById('endbtn').hidden = S.phase !== 'game';
   if (S.phase === 'lobby') return lobby();
   if (S.gameId === 'adedonha') return adedonha();
   if (S.gameId === 'ludo') return ludo();
+  $.innerHTML = '<h1>Jogo sem tela na TV: ' + esc(S.gameId) + '</h1>';
 }
 
 function lobby() {
@@ -39,9 +51,9 @@ function lobby() {
 }
 
 function clock(endsAt, serverNow) {
-  const off = Date.now() - serverNow; // corrige diferença de relógio TV/servidor
+  lastTick = -1; const off = Date.now() - serverNow; // corrige diferença de relógio TV/servidor
   const el = document.getElementById('clock');
-  const upd = () => { const s = Math.max(0, Math.ceil((endsAt - (Date.now() - off)) / 1000)); if (el) { el.textContent = s; el.style.color = s <= 10 ? '#FF5A5F' : 'var(--ink)'; } };
+  const upd = () => { const s = Math.max(0, Math.ceil((endsAt - (Date.now() - off)) / 1000)); if (s <= 5 && s > 0 && s !== lastTick) { lastTick = s; GA.sfx('tick'); } if (el) { el.textContent = s; el.style.color = s <= 10 ? '#FF5A5F' : 'var(--ink)'; } };
   upd(); tick = setInterval(upd, 250);
 }
 
@@ -49,6 +61,7 @@ const rank = (r) => r.map((x, i) => `<div class="panel" style="display:flex;just
 
 function adedonha() {
   const v = S.view;
+  if (v.phase === 'draw' || v.phase === 'spinning') return adeDraw(v);
   if (v.phase === 'playing') {
     $.innerHTML = `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:4vw;align-items:center">
       <div class="pop" style="font-size:16em;font-weight:800;color:var(--gold);line-height:.9">${v.letter}</div>
@@ -105,7 +118,7 @@ function buildLudo(v) {
 }
 function placeLudo(v) {
   const items = [], groups = {};
-  v.order.forEach((id, n) => v.pos[id].forEach((p, i) => { const [x, y] = cellOf(v.seats[id], p, i); const it = { id, n, i, x, y }; items.push(it); (groups[x + ',' + y] ??= []).push(it); }));
+  v.order.forEach((id, n) => v.pos[id].forEach((p, i) => { const [x, y] = cellOf(v.seats[id], p, i); const it = { id, n, i, x, y }; items.push(it); const gk = x + ',' + y; (groups[gk] = groups[gk] || []).push(it); }));
   Object.values(groups).forEach((g) => g.length > 1 && g.forEach((it, k) => { const a = k * 2 * Math.PI / g.length; it.x += Math.cos(a) * .24; it.y += Math.sin(a) * .24; }));
   items.forEach((it) => { const el = document.getElementById(`pc-${it.n}-${it.i}`); el.style.transform = `translate(${it.x}px,${it.y}px)`; el.classList.toggle('hl', v.turn === it.id && v.movable.includes(it.i)); });
 }
@@ -127,4 +140,64 @@ function ludo() {
       return `<div style="margin:8px 0">${chip(p, ` <b>${v.turn === id && v.phase !== 'over' ? '▶' : ''} ${done}/4 🏁</b>`)}</div>`; }).join('');
   if (v.phase !== 'over') clock(v.endsAt, v.serverNow);
 }
+
+// ================= SOM, ENCERRAR e SORTEIO DE LETRA (TV) =================
+let spinT = null, lastTick = -1;
+function sounds(p, s) {
+  if (!p) return;
+  if (p.phase === 'lobby' && s.phase === 'lobby') { if (s.players.length > p.players.length) GA.sfx('join'); return; }
+  if (p.phase === 'lobby' && s.phase === 'game') return GA.sfx('start');
+  if (p.phase === 'game' && s.phase === 'lobby') return GA.sfx('cancel');
+  if (s.phase !== 'game' || !p.view || !s.view) return;
+  const a = p.view, b = s.view;
+  if (s.gameId === 'ludo') {
+    if (b.phase === 'over' && a.phase !== 'over') return GA.sfx('win');
+    let ev = null;
+    b.order.forEach((id) => b.pos[id].forEach((x, i) => {
+      const o = a.pos[id] ? a.pos[id][i] : x; if (o === x) return;
+      if (x === -1) ev = 'capture'; else if (x === 56 && ev !== 'capture') ev = 'home'; else if (!ev) ev = 'move';
+    }));
+    if (ev) return GA.sfx(ev);
+    if (a.phase === 'roll' && b.phase !== 'roll' && b.dice) return GA.sfx('dice');
+    if (b.phase === 'roll' && a.turn !== b.turn) GA.sfx('turn');
+  } else if (s.gameId === 'adedonha' && a.phase !== b.phase) {
+    if (b.phase === 'draw') GA.sfx('turn'); else if (b.phase === 'playing') GA.sfx('start');
+    else if (b.phase === 'results') GA.sfx('stop'); else if (b.phase === 'final') GA.sfx('win');
+  }
+}
+
+function adeDraw(v) {
+  const prevUsed = v.used.filter((l) => !(v.phase === 'spinning' && l === v.letter));
+  const grid = v.alphabet.map((l) => `<span style="display:inline-block;width:1.7em;text-align:center;margin:4px;border-radius:10px;font-weight:800;background:var(--panel);opacity:${prevUsed.includes(l) ? .25 : 1};${prevUsed.includes(l) ? 'text-decoration:line-through;' : ''}">${l}</span>`).join('');
+  $.innerHTML = `<div style="display:grid;grid-template-columns:auto 1fr;gap:4vw;align-items:center;min-height:85vh">
+    <div id="spin" style="font-size:15em;font-weight:800;color:var(--gold);width:1.1em;text-align:center;line-height:1.15;background:var(--panel);border-radius:.15em">?</div>
+    <div><h1 style="margin:0">Rodada ${v.round}/${v.rounds}</h1>
+      <h2 style="margin:.3em 0">${v.phase === 'draw' ? esc(byId(v.drawer).name) + ', gire a letra no seu celular! 🎰' : 'Sorteando a letra… 🎰'}</h2>
+      <div style="opacity:.8;margin-top:1.2em">Cada letra só sai uma vez na partida:</div><div>${grid}</div></div></div>`;
+  if (v.phase === 'spinning') runSpin(v, prevUsed);
+}
+function runSpin(v, prevUsed) {
+  const el = document.getElementById('spin'), end = v.spinEndsAt + (Date.now() - v.serverNow);
+  const set = v.alphabet.filter((l) => !prevUsed.includes(l));
+  (function step() {
+    const left = end - Date.now();
+    if (left <= 150) { el.textContent = v.letter; el.classList.add('pop'); GA.sfx('reveal'); return; }
+    el.textContent = set[Math.floor(Math.random() * set.length)]; GA.sfx('tick');
+    spinT = setTimeout(step, left > 1800 ? 70 : left > 900 ? 140 : 240);
+  })();
+}
+
+// áudio: libera no primeiro clique/tecla; botão de mudo; encerrar partida com confirmação
+function unlockAudio() { GA.unlock(); GA.setMusic(true); }
+['pointerdown', 'keydown', 'click'].forEach((ev) => document.addEventListener(ev, unlockAudio));
+const sndBtn = document.getElementById('snd'), hint = document.getElementById('sndhint'), endBtn = document.getElementById('endbtn');
+const sndIcon = () => (sndBtn.textContent = GA.isOn() ? '🔊' : '🔇');
+sndIcon(); GA.setMusic(true);
+sndBtn.onclick = () => { GA.toggle(); sndIcon(); };
+setInterval(() => { hint.style.display = GA.running() ? 'none' : 'block'; }, 800);
+let endArm = null;
+endBtn.onclick = () => {
+  if (!endArm) { endBtn.textContent = '⚠ Toque de novo para confirmar'; endArm = setTimeout(() => { endArm = null; endBtn.textContent = '⏹ Encerrar partida'; }, 4000); return; }
+  clearTimeout(endArm); endArm = null; endBtn.textContent = '⏹ Encerrar partida'; socket.emit('host:end');
+};
 </script></body></html>
