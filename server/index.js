@@ -37,6 +37,7 @@ function snapshot(r, pid) {
 }
 
 function push(r) {
+  if (r.closed) return; // sala encerrada: ignora eventos de celulares antigos
   r.touched = Date.now();
   if (r.hostSid) io.to(r.hostSid).emit('state', snapshot(r));
   r.players.forEach((p) => p.sid && io.to(p.sid).emit('state', snapshot(r, p.id)));
@@ -48,12 +49,23 @@ io.on('connection', (socket) => {
   let room = null, pid = null;
 
   // ---- TV ----
-  socket.on('host:create', (_, ack) => {
+  const createRoom = () => {
     const code = newCode();
-    room = { code, hostSid: socket.id, hostToken: crypto.randomUUID(), players: new Map(), vip: null, game: null, gameId: null, touched: Date.now() };
-    rooms.set(code, room);
-    ack({ code, hostToken: room.hostToken });
-    push(room);
+    const r = { code, hostSid: socket.id, hostToken: crypto.randomUUID(), players: new Map(), vip: null, game: null, gameId: null, touched: Date.now() };
+    rooms.set(code, r);
+    return r;
+  };
+  socket.on('host:create', (_, ack) => { room = createRoom(); ack({ code: room.code, hostToken: room.hostToken }); push(room); });
+
+  // "Encerrar tudo": fecha a sala, desconecta todos os celulares e gera um novo código/QR Code
+  socket.on('host:reset', (_, ack) => {
+    if (!room || room.hostSid !== socket.id) return;
+    const old = room;
+    if (old.game) old.game.destroy();
+    old.game = null; old.closed = true; old.hostSid = null;
+    old.players.forEach((p) => p.sid && io.to(p.sid).emit('room:closed'));
+    rooms.delete(old.code);
+    room = createRoom(); ack({ code: room.code, hostToken: room.hostToken }); push(room);
   });
 
   socket.on('host:resume', ({ code, hostToken }, ack) => {

@@ -12,7 +12,7 @@ class Ludo extends GameEngine {
     this.order = ps.map((p) => p.id);
     this.seat = Object.fromEntries(this.order.map((id, i) => [id, seats[i]]));
     this.pos = Object.fromEntries(this.order.map((id) => [id, [-1, -1, -1, -1]]));
-    this.turn = 0; this.sixes = 0; this.dice = null; this.mv = []; this.winner = null; this.msg = '';
+    this.turn = 0; this.rollN = 0; this.sixes = 0; this.dice = null; this.mv = []; this.winner = null; this.msg = '';
     this.begin();
   }
 
@@ -47,7 +47,7 @@ class Ludo extends GameEngine {
 
   roll(id) {
     this.clear();
-    this.dice = 1 + Math.floor(Math.random() * 6);
+    this.dice = 1 + Math.floor(Math.random() * 6); this.rollN++;
     this.sixes = this.dice === 6 ? this.sixes + 1 : 0;
     if (this.sixes >= 3) { this.mv = []; this.msg = `${this.name(id)} tirou três 6 seguidos e perdeu a vez!`; return this.hold(() => this.next(false)); }
     this.mv = this.movable(id, this.dice);
@@ -81,7 +81,7 @@ class Ludo extends GameEngine {
   }
 
   common() {
-    return { phase: this.phase, turn: this.cur(), dice: this.dice, msg: this.msg, pos: this.pos, seats: this.seat, order: this.order,
+    return { phase: this.phase, turn: this.cur(), dice: this.dice, rollN: this.rollN, msg: this.msg, pos: this.pos, seats: this.seat, order: this.order,
       winner: this.winner, endsAt: this.endsAt, serverNow: Date.now(), movable: this.phase === 'move' ? this.mv : [] };
   }
   hostView() { return this.common(); }

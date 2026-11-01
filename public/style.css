@@ -16,3 +16,13 @@ input.field:focus{outline:3px solid var(--gold);border-color:var(--gold)}
 .pc{transition:transform .5s ease-in-out}.pc.hl circle{stroke:#FCA311;stroke-width:.16;animation:pulse .8s infinite alternate}
 @keyframes pulse{to{transform:scale(1.25)}}
 @media (prefers-reduced-motion:reduce){.pc.hl circle{animation:none}.pc{transition:none}}
+.dwrap{position:relative;perspective:520px}
+.dwrap:after{content:'';position:absolute;left:12%;right:12%;bottom:-16%;height:14%;background:rgba(0,0,0,.4);filter:blur(7px);border-radius:50%}
+.dtilt{width:100%;height:100%;transform-style:preserve-3d;transform:rotateX(-24deg) rotateY(-30deg)}
+.dcube{position:relative;width:100%;height:100%;transform-style:preserve-3d}
+.dface{position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(145deg,#fff,#e6dfcc);border-radius:16%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:13%;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:inset 0 0 0 2px rgba(0,0,0,.08)}
+.dface i{align-self:center;justify-self:center;width:78%;height:78%;border-radius:50%;background:var(--pip,#14213D);box-shadow:inset 0 -2px 3px rgba(0,0,0,.35)}
+.dface.one i{width:100%;height:100%}
+.dwrap.toss{animation:toss 1.25s ease-out}
+@keyframes toss{0%{transform:translateY(0) scale(1)}30%{transform:translateY(-45%) scale(1.25)}60%{transform:translateY(0) scale(.95)}78%{transform:translateY(-12%) scale(1.04)}100%{transform:translateY(0) scale(1)}}
+@media (prefers-reduced-motion:reduce){.dwrap.toss{animation:none}.dcube{transition-duration:.01s!important}}
