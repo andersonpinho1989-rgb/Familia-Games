@@ -23,6 +23,7 @@ function render() {
   clearInterval(tick);
   if (S.phase === 'lobby') return lobby();
   if (S.gameId === 'adedonha') return adedonha();
+  if (S.gameId === 'ludo') return ludo();
 }
 
 function lobby() {
@@ -66,5 +67,64 @@ function adedonha() {
     return;
   }
   $.innerHTML = `<h1 style="font-size:3em;margin:0 0 .4em">🏆 Resultado final</h1>${rank(v.ranking)}`;
+}
+
+// ================= LUDO (TV) =================
+const LC = ['#E5484D', '#3BB273', '#F2C14E', '#4D96FF'], OFF = [0, 13, 26, 39], STARS = [8, 21, 34, 47];
+const RING = (() => { const r = []; for (let x = 1; x <= 5; x++) r.push([x, 6]); for (let y = 5; y >= 0; y--) r.push([6, y]); r.push([7, 0], [8, 0]);
+  for (let y = 1; y <= 5; y++) r.push([8, y]); for (let x = 9; x <= 14; x++) r.push([x, 6]); r.push([14, 7], [14, 8]);
+  for (let x = 13; x >= 9; x--) r.push([x, 8]); for (let y = 9; y <= 14; y++) r.push([8, y]); r.push([7, 14], [6, 14]);
+  for (let y = 13; y >= 9; y--) r.push([6, y]); for (let x = 5; x >= 0; x--) r.push([x, 8]); r.push([0, 7], [0, 6]); return r; })();
+const COL = (seat, k) => [[1 + k, 7], [7, 1 + k], [13 - k, 7], [7, 13 - k]][seat];
+function cellOf(seat, p, i) {
+  if (p < 0) { const ox = [0, 9, 9, 0][seat], oy = [0, 0, 9, 9][seat]; return [ox + [1, 4, 1, 4][i] + .5, oy + [1, 1, 4, 4][i] + .5]; }
+  if (p <= 50) { const c = RING[(OFF[seat] + p) % 52]; return [c[0] + .5, c[1] + .5]; }
+  if (p < 56) { const c = COL(seat, p - 51); return [c[0] + .5, c[1] + .5]; }
+  const d = [[-.75, 0], [0, -.75], [.75, 0], [0, .75]][seat], s = (i - 1.5) * .22;
+  return [7.5 + d[0] + (seat % 2 ? s : 0), 7.5 + d[1] + (seat % 2 ? 0 : s)];
+}
+function buildLudo(v) {
+  let s = '<svg id="lboard" viewBox="0 0 15 15" style="height:88vh;width:88vh;max-width:62vw;background:#1B2B52;border-radius:18px;flex:none">';
+  for (let k = 0; k < 4; k++) {
+    const ox = [0, 9, 9, 0][k], oy = [0, 0, 9, 9][k], used = v.order.some((id) => v.seats[id] === k);
+    s += `<rect x="${ox}" y="${oy}" width="6" height="6" fill="${LC[k]}" opacity="${used ? 1 : .25}"/><rect x="${ox + .7}" y="${oy + .7}" width="4.6" height="4.6" rx=".6" fill="#F8F5EE" opacity="${used ? 1 : .35}"/>`;
+    for (let i = 0; i < 4; i++) { const [cx, cy] = cellOf(k, -1, i); s += `<circle cx="${cx}" cy="${cy}" r=".5" fill="${LC[k]}" opacity=".3"/>`; }
+    for (let j = 0; j < 5; j++) { const [x, y] = COL(k, j); s += `<rect x="${x}" y="${y}" width="1" height="1" fill="${LC[k]}" stroke="#1B2B52" stroke-width=".06"/>`; }
+  }
+  RING.forEach(([x, y], idx) => {
+    const st = OFF.indexOf(idx);
+    s += `<rect x="${x}" y="${y}" width="1" height="1" fill="${st >= 0 ? LC[st] : '#F8F5EE'}" stroke="#1B2B52" stroke-width=".06"/>`;
+    if (STARS.includes(idx)) s += `<text x="${x + .5}" y="${y + .72}" text-anchor="middle" font-size=".7" fill="#1B2B52">★</text>`;
+  });
+  const T = [[6, 6, 6, 9], [6, 6, 9, 6], [9, 6, 9, 9], [6, 9, 9, 9]];
+  [0, 1, 2, 3].forEach((k) => s += `<polygon points="${T[k].join(',').replace(/(\d+),(\d+),(\d+),(\d+)/, '$1,$2 $3,$4')} 7.5,7.5" fill="${LC[k]}"/>`);
+  v.order.forEach((id) => [0, 1, 2, 3].forEach((i) => {
+    s += `<g class="pc" id="pc-${v.order.indexOf(id)}-${i}"><circle r=".36" fill="${LC[v.seats[id]]}" stroke="#fff" stroke-width=".08"/><text y=".13" text-anchor="middle" font-size=".4" font-weight="800" fill="#14213D">${i + 1}</text></g>`;
+  }));
+  return s + '</svg>';
+}
+function placeLudo(v) {
+  const items = [], groups = {};
+  v.order.forEach((id, n) => v.pos[id].forEach((p, i) => { const [x, y] = cellOf(v.seats[id], p, i); const it = { id, n, i, x, y }; items.push(it); (groups[x + ',' + y] ??= []).push(it); }));
+  Object.values(groups).forEach((g) => g.length > 1 && g.forEach((it, k) => { const a = k * 2 * Math.PI / g.length; it.x += Math.cos(a) * .24; it.y += Math.sin(a) * .24; }));
+  items.forEach((it) => { const el = document.getElementById(`pc-${it.n}-${it.i}`); el.style.transform = `translate(${it.x}px,${it.y}px)`; el.classList.toggle('hl', v.turn === it.id && v.movable.includes(it.i)); });
+}
+let lastRoll = '';
+function ludo() {
+  const v = S.view;
+  if (!document.getElementById('lboard')) $.innerHTML = `<div style="display:flex;gap:3vw;align-items:center;justify-content:center;min-height:92vh"><div id="lwrap">${buildLudo(v)}</div><div id="lside" style="flex:1;max-width:34vw"></div></div>`;
+  placeLudo(v);
+  const key = `${v.turn}-${v.dice}-${v.msg}-${v.phase}`, fresh = key !== lastRoll; lastRoll = key;
+  const cur = byId(v.turn), face = v.dice ? String.fromCodePoint(0x267F + v.dice) : '🎲';
+  document.getElementById('lside').innerHTML =
+    (v.phase === 'over' ? `<h1 style="font-size:2.4em;margin:0 0 .4em">🏆 ${esc(byId(v.winner).name)} venceu!</h1>` :
+     `<div class="panel" style="text-align:center;border:6px solid ${LC[v.seats[v.turn]]};margin-bottom:16px">
+        <div style="font-size:1.3em;font-weight:800">Vez de ${esc(cur.name)}</div>
+        <div class="${fresh && v.dice ? 'pop' : ''}" style="font-size:5.5em;line-height:1.1">${face}</div>
+        <div style="min-height:1.6em;opacity:.9">${esc(v.msg) || (v.phase === 'move' ? 'Escolhendo a peça…' : v.phase === 'roll' ? 'Rolando o dado…' : '')}</div>
+        <div id="clock" style="font-size:1.6em;font-weight:800;opacity:.7"></div></div>`) +
+    v.order.map((id) => { const p = byId(id), done = v.pos[id].filter((x) => x === 56).length;
+      return `<div style="margin:8px 0">${chip(p, ` <b>${v.turn === id && v.phase !== 'over' ? '▶' : ''} ${done}/4 🏁</b>`)}</div>`; }).join('');
+  if (v.phase !== 'over') clock(v.endsAt, v.serverNow);
 }
 </script></body></html>

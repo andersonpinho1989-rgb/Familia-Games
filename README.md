@@ -15,3 +15,10 @@ Vercel não serve para o servidor (funções serverless não mantêm WebSocket);
 ## Novo jogo
 Copie `server/games/_template.js`, implemente `onStart / onAction / hostView / playerView`,
 registre em `server/games/index.js` e renderize a view em `public/index.html` (TV) e `public/play.html` (celular).
+
+## Ludo (2–4 jogadores)
+- Cores por assento (vermelho, verde, amarelo, azul). Com 2 jogadores, ficam em lados opostos.
+- Precisa tirar **6** para tirar uma peça da base. Tirar 6 ou capturar dá **jogada extra**; três 6 seguidos perdem a vez.
+- Capturar = cair numa casa com peça adversária (exceto casas de largada e ★, que são seguras). A peça capturada volta à base.
+- Para chegar em casa é preciso o número **exato** no dado.
+- Se só houver uma jogada possível, ela é feita sozinha. Se o jogador demorar 30 s (ou estiver desconectado, 3 s), o servidor joga por ele.

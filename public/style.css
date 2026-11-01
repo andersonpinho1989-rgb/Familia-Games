@@ -12,3 +12,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:'Baloo 2',system
 input.field{width:100%;padding:14px 16px;border-radius:14px;border:2px solid #34508f;background:#0f1a31;color:var(--ink);font-size:1.2rem;font-family:inherit}
 input.field:focus{outline:3px solid var(--gold);border-color:var(--gold)}
 @media (prefers-reduced-motion:reduce){.pop{animation:none}}
+
+.pc{transition:transform .5s ease-in-out}.pc.hl circle{stroke:#FCA311;stroke-width:.16;animation:pulse .8s infinite alternate}
+@keyframes pulse{to{transform:scale(1.25)}}
+@media (prefers-reduced-motion:reduce){.pc.hl circle{animation:none}.pc{transition:none}}

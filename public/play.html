@@ -52,6 +52,7 @@ function render() {
     return;
   }
   if (S.gameId === 'adedonha') return adedonha(head, vip);
+  if (S.gameId === 'ludo') return ludo(head, vip);
 }
 
 function adedonha(head, vip) {
@@ -76,5 +77,28 @@ function adedonha(head, vip) {
   }
   $.innerHTML = head + `<h2>Fim de jogo! 🏆</h2>` + (vip ? `<button class="btn" id="end">Voltar ao menu</button>` : '');
   if (vip) $id('end').onclick = () => socket.emit('game:end');
+}
+
+// ================= LUDO (celular) =================
+const LC = ['#E5484D', '#3BB273', '#F2C14E', '#4D96FF']; let lastBuzz = '';
+function ludo(head, vip) {
+  const v = S.view, col = LC[v.seat], tp = S.players.find((p) => p.id === v.turn) || { name: '?' }, mine = v.pos[S.me];
+  const k = v.turn + v.phase + v.dice;
+  if (v.myTurn && v.phase === 'roll' && k !== lastBuzz) { lastBuzz = k; buzz([200, 80, 200]); }
+  const win = S.players.find((p) => p.id === v.winner), face = v.dice ? String.fromCodePoint(0x267F + v.dice) : '🎲';
+  const title = v.phase === 'over' ? `🏆 ${esc(win?.name)} venceu!` : v.myTurn ? 'Sua vez!' : `Vez de ${esc(tp.name)}`;
+  let h = head + `<div class="panel" style="border:5px solid ${col};text-align:center"><div style="font-size:1.5rem;font-weight:800">${title}</div>
+    <div style="font-size:5.5rem;line-height:1.1">${face}</div><div style="opacity:.85;min-height:1.5em">${esc(v.msg || '')}</div></div>`;
+  if (v.myTurn && v.phase === 'roll') h += `<button class="btn" id="roll" style="margin-top:16px;font-size:2rem;padding:28px;background:${col}">🎲 ROLAR DADO</button>`;
+  else if (v.myTurn && v.phase === 'move') {
+    h += `<p style="text-align:center;font-weight:700;margin:14px 0 8px">Toque na peça que quer mover</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">` +
+      mine.map((p, i) => { const ok = v.movable.includes(i), lbl = p === -1 ? 'Na base' : p === 56 ? 'Em casa 🏁' : p > 50 ? 'Reta final' : `Casa ${p + 1}`;
+        return `<button data-p="${i}" ${ok ? '' : 'disabled'} class="btn ${ok ? '' : 'ghost'}" style="background:${ok ? col : ''};padding:20px 8px"><span style="font-size:2.2rem">${i + 1}</span><br><small>${lbl}</small></button>`; }).join('') + '</div>';
+  } else if (v.phase !== 'over') h += `<p style="text-align:center;opacity:.8;margin-top:14px">Suas peças: ${mine.filter((p) => p === -1).length} na base · ${mine.filter((p) => p >= 0 && p < 56).length} no tabuleiro · ${mine.filter((p) => p === 56).length}/4 em casa</p>`;
+  if (v.phase === 'over' && vip) h += `<button class="btn" id="end" style="margin-top:16px">Voltar ao menu</button>`;
+  $.innerHTML = h;
+  if (document.getElementById('roll')) document.getElementById('roll').onclick = () => act('roll');
+  document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => act('move', { piece: +b.dataset.p })));
+  if (document.getElementById('end')) document.getElementById('end').onclick = () => socket.emit('game:end');
 }
 </script></body></html>
