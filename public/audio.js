@@ -48,6 +48,7 @@
     capture: function (t) { noise(t, 0.2, 0.5); tone(320, t, 0.35, 'sawtooth', 0.4, null, 70); },
     home: function (t) { seq([784, 988, 1175], t, 0.09, 'triangle', 0.5, 0.25); },
     turn: function (t) { seq([659, 880], t, 0.1); },
+    check: function (t) { seq([880, 660, 880], t, 0.09, 'square', 0.25, 0.12); },
     tick: function (t) { tone(1000, t, 0.05, 'square', 0.18); },
     stop: function (t) { noise(t, 0.12, 0.4); tone(150, t, 0.45, 'sawtooth', 0.45, null, 70); },
     reveal: function (t) { seq([523, 659, 784, 1047], t, 0.08, 'triangle', 0.5, 0.25); },

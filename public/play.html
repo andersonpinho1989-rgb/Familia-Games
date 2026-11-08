@@ -79,6 +79,7 @@ function render() {
   }
   if (S.gameId === 'adedonha') adedonha(head, vip);
   else if (S.gameId === 'ludo') ludo(head, vip);
+  else if (S.gameId === 'xadrez' || S.gameId === 'dama') boardgame(head, vip);
 }
 
 function adedonha(head, vip) {
@@ -180,6 +181,68 @@ function ludo(head, vip) {
   document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => { GA.sfx('move'); act('move', { piece: +b.dataset.p }); }));
   if ($id('end')) $id('end').onclick = () => socket.emit('game:end');
   if ($id('vw')) $id('vw').onclick = () => socket.emit('game:setting', { key: 'view', value: v.view === '2d' ? '3d' : '2d' });
+}
+
+// ================= XADREZ / DAMA (celular) =================
+const BGL = { K: '\u265A', Q: '\u265B', R: '\u265C', B: '\u265D', N: '\u265E', P: '\u265F' };
+const BRES = { checkmate: 'Xeque-mate', resign: 'Desistência', stalemate: 'Empate por afogamento', agreement: 'Empate por acordo', material: 'Empate: material insuficiente', '50': 'Empate: regra dos 50 lances', repetition: 'Empate por repetição', nomoves: 'Adversário sem jogadas', kings: 'Empate: 20 lances de damas sem captura' };
+let BSEL = -1, BN = -1, BPROMO = null, BTURN = -1, BHEAD = '', BVIP = false;
+function bgPiece(p, kind, cell) {
+  if (kind === 'chess') { const w = p.c === 'w'; return `<span style="font-size:${Math.round(cell * 0.8)}px;line-height:1;color:${w ? '#fff' : '#1b1b1b'};-webkit-text-stroke:${w ? '1.2px #333' : '1px #ddd'};text-shadow:0 2px 3px rgba(0,0,0,.4)">${BGL[p.t]}\uFE0E</span>`; }
+  const w = p.c === 'w';
+  return `<span style="width:78%;height:78%;border-radius:50%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 35% 30%,${w ? '#fffdf5,#d9d0b8' : '#5a5a5a,#1d1d1d'});border:2px solid ${w ? '#b8ad8c' : '#000'};box-shadow:0 3px 4px rgba(0,0,0,.5);font-size:${Math.round(cell * 0.45)}px;color:#E9C46A">${p.t === 'K' ? '\u265B\uFE0E' : ''}</span>`;
+}
+function bgTap(i) {
+  const v = S.view, legal = v.legal || []; if (!legal.length) return;
+  if (BSEL >= 0) {
+    const ms = legal.filter((m) => m[0] === BSEL && m[1] === i);
+    if (ms.length) {
+      if (v.kind === 'chess' && ms.some((m) => m[2])) { BPROMO = { from: BSEL, to: i }; return boardgame(BHEAD, BVIP); }
+      GA.sfx('move'); buzz(20); socket.emit('game:action', { type: 'move', payload: { from: BSEL, to: i } }); BSEL = -1; return;
+    }
+  }
+  if (legal.some((m) => m[0] === i)) { BSEL = i; GA.sfx('click'); } else BSEL = -1;
+  boardgame(BHEAD, BVIP);
+}
+function boardgame(head, vip) {
+  BHEAD = head; BVIP = vip;
+  const v = S.view, kind = v.kind, me = v.me, flip = me === 'b', legal = v.legal || [];
+  if (v.moves !== BN) { BSEL = -1; BPROMO = null; BN = v.moves; }
+  if (BSEL >= 0 && !legal.some((m) => m[0] === BSEL)) { BSEL = -1; BPROMO = null; } // seleção inválida (vez mudou)
+  if (v.turn === me && !v.over && BTURN !== v.moves) { BTURN = v.moves; buzz(120); GA.sfx('turn'); }
+  const byS = {}; v.pieces.forEach((p) => (byS[p.y * 8 + p.x] = p));
+  const canFrom = new Set(legal.map((m) => m[0])), tset = {}; legal.filter((m) => m[0] === BSEL).forEach((m) => (tset[m[1]] = 1));
+  const cell = Math.floor(Math.min(window.innerWidth - 36, 460) / 8);
+  let cells = '';
+  for (let dy = 0; dy < 8; dy++) for (let dx = 0; dx < 8; dx++) {
+    const x = flip ? 7 - dx : dx, y = flip ? 7 - dy : dy, i = y * 8 + x, dark = (x + y) % 2 === 1, p = byS[i];
+    let bg = dark ? '#A9794A' : '#EAD9B5';
+    if (v.last && (v.last.from === i || v.last.to === i)) bg = dark ? '#C2A24A' : '#E6D27A';
+    if (v.check === i) bg = '#E5484D';
+    let inner = p ? bgPiece(p, kind, cell) : '';
+    if (tset[i]) inner += `<i style="position:absolute;width:${p ? '88%' : '30%'};height:${p ? '88%' : '30%'};border-radius:50%;${p ? 'border:4px solid rgba(46,196,182,.95)' : 'background:rgba(46,196,182,.9)'}"></i>`;
+    const sel = BSEL === i ? 'outline:4px solid #FCA311;outline-offset:-4px;' : canFrom.has(i) ? 'box-shadow:inset 0 0 0 3px rgba(46,196,182,.6);' : '';
+    cells += `<div data-sq="${i}" style="position:relative;display:flex;align-items:center;justify-content:center;background:${bg};${sel}">${inner}</div>`;
+  }
+  const colorName = me === 'w' ? '⚪ brancas' : '⚫ pretas';
+  let status;
+  if (v.over) status = (BRES[v.over.reason] || '') + (v.over.winner ? (v.over.winner === me ? ' — 🏆 você venceu!' : ' — você perdeu') : '');
+  else status = (v.turn === me ? '<b>Sua vez</b>' : 'Vez do adversário') + (v.check >= 0 ? ' — <b style="color:#FF5A5F">XEQUE!</b>' : '');
+  let ctl = '';
+  if (BPROMO) ctl += `<div class="panel" style="margin-top:10px;text-align:center"><div style="margin-bottom:6px;font-weight:700">Promover a:</div><div style="display:flex;gap:8px;justify-content:center">${['Q', 'R', 'B', 'N'].map((t) => `<button class="btn ghost" data-promo="${t}" style="width:auto;padding:6px 16px;font-size:2rem">${BGL[t]}\uFE0E</button>`).join('')}</div></div>`;
+  if (v.over) ctl += `<button class="btn" id="rematch" style="margin-top:12px">🔁 Revanche (trocar as cores)</button>` + (vip ? `<button class="btn ghost" id="end" style="margin-top:10px">Voltar ao menu</button>` : '');
+  else if (v.drawOffer && v.drawOffer !== me) ctl += `<div class="panel" style="margin-top:12px;text-align:center">🤝 O adversário propôs empate<div style="display:flex;gap:10px;margin-top:10px"><button class="btn" id="accd" style="background:var(--ok)">Aceitar</button><button class="btn ghost" id="decd">Recusar</button></div></div>`;
+  else ctl += `<div style="display:flex;gap:10px;margin-top:12px"><button class="btn ghost" id="offd" ${v.drawOffer ? 'disabled' : ''} style="font-size:1rem;padding:12px">${v.drawOffer ? '🤝 Empate proposto…' : '🤝 Propor empate'}</button><button class="btn ghost" id="resg" style="font-size:1rem;padding:12px">🏳 Desistir</button></div>`;
+  const lastTxt = v.history.length ? `<div style="text-align:center;opacity:.75;margin-top:6px">Último lance: <b>${esc(v.history[v.history.length - 1])}</b></div>` : '';
+  $.innerHTML = head + `<div style="text-align:center;margin-bottom:6px">Você joga de <b>${colorName}</b></div><div style="text-align:center;font-size:1.15rem;margin-bottom:8px">${status}</div>` +
+    `<div id="bgrid" style="display:grid;grid-template-columns:repeat(8,${cell}px);grid-auto-rows:${cell}px;width:${cell * 8}px;margin:0 auto;border-radius:8px;overflow:hidden;touch-action:manipulation;box-shadow:0 6px 20px rgba(0,0,0,.45)">${cells}</div>` + lastTxt + ctl;
+  $id('bgrid').onclick = (e) => { const c = e.target.closest ? e.target.closest('[data-sq]') : null; if (c) bgTap(+c.dataset.sq); };
+  document.querySelectorAll('[data-promo]').forEach((b) => (b.onclick = () => { const pr = BPROMO; BPROMO = null; BSEL = -1; GA.sfx('move'); socket.emit('game:action', { type: 'move', payload: { from: pr.from, to: pr.to, promo: b.dataset.promo } }); }));
+  const on = (id, fn) => { if ($id(id)) $id(id).onclick = fn; };
+  const send = (type) => () => { GA.sfx('click'); socket.emit('game:action', { type }); };
+  on('rematch', send('rematch')); on('accd', send('acceptDraw')); on('decd', send('declineDraw')); on('offd', send('offerDraw'));
+  on('resg', () => { if (confirm('Desistir da partida?')) { GA.sfx('cancel'); socket.emit('game:action', { type: 'resign' }); } });
+  on('end', () => socket.emit('game:end'));
 }
 
 // ================= SOM e ENCERRAR PARTIDA (celular) =================

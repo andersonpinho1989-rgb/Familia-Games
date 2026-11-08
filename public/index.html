@@ -3,7 +3,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/ludo3d.js"></script></head>
+<script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/ludo3d.js"></script><script src="/board2d.js"></script><script src="/board3d.js"></script></head>
 <body><div id="ctl" style="position:fixed;top:1vw;right:1vw;display:flex;gap:10px;z-index:9">
   <button id="newroom" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">🔄 Encerrar tudo e gerar novo QR Code</button>
   <button id="viewbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">🖥 Trocar para 2D</button>
@@ -35,10 +35,12 @@ function render() {
   clearInterval(tick); clearTimeout(spinT);
   document.getElementById('endbtn').hidden = S.phase !== 'game';
   document.getElementById('newroom').hidden = S.phase !== 'lobby';
-  const vb = document.getElementById('viewbtn'); vb.hidden = !(S.phase === 'game' && S.gameId === 'ludo');
+  const vb = document.getElementById('viewbtn'); vb.hidden = !(S.phase === 'game' && ['ludo', 'xadrez', 'dama'].includes(S.gameId));
   vb.textContent = S.settings && S.settings.view === '2d' ? '🖥 Trocar para 3D' : '🖥 Trocar para 2D';
   if (L3 && !(S.phase === 'game' && S.gameId === 'ludo')) { L3.destroy(); L3 = null; }
+  if (BG && !(S.phase === 'game' && (S.gameId === 'xadrez' || S.gameId === 'dama'))) { BG.destroy(); BG = null; BMODE = null; }
   if (S.phase === 'lobby') return lobby();
+  if (S.gameId === 'xadrez' || S.gameId === 'dama') return boardgame();
   if (S.gameId === 'adedonha') return adedonha();
   if (S.gameId === 'ludo') return ludo();
   $.innerHTML = '<h1>Jogo sem tela na TV: ' + esc(S.gameId) + '</h1>';
@@ -193,6 +195,50 @@ function ludo() {
   if (v.phase !== 'over') clock(v.endsAt, v.serverNow); else $e('clock').textContent = '';
 }
 
+// ================= XADREZ e DAMA (TV) =================
+let BG = null, BMODE = null, BKIND = null;
+const BRES = { checkmate: 'Xeque-mate', resign: 'Desistência', stalemate: 'Empate por afogamento', agreement: 'Empate por acordo', material: 'Empate: material insuficiente', '50': 'Empate: regra dos 50 lances', repetition: 'Empate por repetição', nomoves: 'Adversário sem jogadas', kings: 'Empate: 20 lances de damas sem captura' };
+const BVAL = { P: 1, N: 3, B: 3, R: 5, Q: 9 };
+function buildBG(v, kind, want) { // 3D ou 2D dentro de #bwrap
+  const wrap = document.getElementById('bwrap');
+  if (BG) { BG.destroy(); BG = null; }
+  wrap.innerHTML = '';
+  if (want === '3d' && window.Board3D) { try { BG = Board3D.create(wrap, v, kind); } catch (e) { console.error(e); BG = null; } }
+  if (!BG) BG = Board2D.create(wrap, v, kind); // 2D escolhido (ou sem WebGL)
+  BMODE = want;
+}
+function boardgame() {
+  const v = S.view, kind = v.kind, want = v.view === '2d' ? '2d' : '3d', $e = (i) => document.getElementById(i);
+  const nameOf = (c) => (c === 'w' ? '⚪ ' : '⚫ ') + byId(v.side[c]).name;
+  if (!$e('bwrap') || BKIND !== kind) {
+    $.innerHTML = `<div style="display:flex;gap:2.5vw;align-items:center;justify-content:center;min-height:92vh">
+      <div id="bwrap" style="flex:none;width:min(62vw,90vh);height:min(62vw,90vh)"></div>
+      <div id="bside" style="flex:1;max-width:30vw"><div id="bpl_b" class="panel" style="margin-bottom:12px"></div>
+        <div id="bstat" class="panel" style="text-align:center;font-size:1.15em;font-weight:800;margin-bottom:12px"></div>
+        <div id="bpl_w" class="panel" style="margin-bottom:12px"></div>
+        <div id="bhist" class="panel" style="max-height:28vh;overflow:auto;font-size:.8em;line-height:1.55"></div></div></div>`;
+    BG = null; BMODE = null; BKIND = kind;
+  }
+  if (BMODE !== want) buildBG(v, kind, want);
+  BG.update(v);
+  ['w', 'b'].forEach((c) => {
+    const o = c === 'w' ? 'b' : 'w'; let cap = '', adv = '';
+    if (kind === 'chess') {
+      const mine = v.captured[o], theirs = v.captured[c], d = mine.reduce((a, t) => a + BVAL[t], 0) - theirs.reduce((a, t) => a + BVAL[t], 0);
+      cap = mine.map((t) => `<span style="font-size:1.5em;color:${o === 'w' ? '#fff' : '#222'};-webkit-text-stroke:1px ${o === 'w' ? '#555' : '#bbb'}">${Board2D.GLYPH[t]}\uFE0E</span>`).join('');
+      adv = d > 0 ? ' <b style="color:var(--ok)">+' + d + '</b>' : '';
+    } else cap = v.lost[o] ? `<small>${v.lost[o]} peça(s) capturada(s)</small>` : '';
+    $e('bpl_' + c).innerHTML = `<div style="font-weight:800;font-size:1.1em">${nameOf(c)}${v.turn === c && !v.over ? ' ▶' : ''}${adv}</div><div style="min-height:1.6em">${cap}</div>`;
+  });
+  let st;
+  if (v.over) st = (BRES[v.over.reason] || '') + (v.over.winner ? ' — 🏆 ' + nameOf(v.over.winner) + ' venceu!' : '');
+  else st = 'Vez de ' + nameOf(v.turn) + (v.check >= 0 ? ' — <span style="color:#FF5A5F">XEQUE!</span>' : '') + (v.drawOffer ? '<br><small>🤝 ' + esc(nameOf(v.drawOffer)) + ' propôs empate</small>' : '');
+  $e('bstat').innerHTML = v.over ? esc(st) : st;
+  let h = '';
+  for (let i = 0; i < v.history.length; i += 2) h += `<div><span style="opacity:.6">${i / 2 + 1}.</span> ${esc(v.history[i])} &nbsp; ${esc(v.history[i + 1] || '')}</div>`;
+  $e('bhist').innerHTML = h || '<span style="opacity:.6">Nenhum lance ainda</span>'; $e('bhist').scrollTop = $e('bhist').scrollHeight;
+}
+
 // ================= SOM, ENCERRAR e SORTEIO DE LETRA (TV) =================
 let spinT = null, lastTick = -1;
 function sounds(p, s) {
@@ -212,6 +258,10 @@ function sounds(p, s) {
     if (ev) return GA.sfx(ev);
     if (a.phase === 'roll' && b.phase !== 'roll' && b.dice) return GA.sfx('dice');
     if (b.phase === 'roll' && a.turn !== b.turn) GA.sfx('turn');
+  } else if (s.gameId === 'xadrez' || s.gameId === 'dama') {
+    if (b.over && !a.over) return GA.sfx(b.over.winner ? 'win' : 'cancel');
+    if (b.moves > a.moves) GA.sfx(b.check >= 0 ? 'check' : b.lastCap ? 'capture' : 'move');
+    else if (b.drawOffer && !a.drawOffer) GA.sfx('turn');
   } else if (s.gameId === 'adedonha' && a.phase !== b.phase) {
     if (b.phase === 'draw') GA.sfx('turn'); else if (b.phase === 'playing') GA.sfx('start');
     else if (b.phase === 'validating') GA.sfx('stop'); else if (b.phase === 'results') GA.sfx('reveal'); else if (b.phase === 'final') GA.sfx('win');

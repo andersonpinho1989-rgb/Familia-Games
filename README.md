@@ -45,3 +45,10 @@ registre em `server/games/index.js` e renderize a view em `public/index.html` (T
 - **Adedonha – tempos:** no lobby o ⭐ escolhe tempo por rodada (30 s a 3 min), tempo de validação (20 a 90 s) e número de rodadas (3, 5 ou 7).
 - **Botão de sair:** fica no canto superior direito do celular, ao lado do 🔊. Para o ⭐ durante a partida é **⏹ Encerrar** (encerra para todos); para os demais é **🚪 Sair** (deixa a sala; no meio da partida o servidor joga por ele no Ludo).
 - Novas opções para outros jogos: declare `options` (e `pick`) no `static meta` do jogo; as telas de lobby as montam sozinhas.
+
+## Xadrez e Dama (2 jogadores, 2D e 3D)
+- **Xadrez:** regras completas (xeque, xeque-mate, afogamento, roque, en passant, promoção com escolha, repetição tripla, regra dos 50 lances e material insuficiente). O motor passa nas contagens oficiais de lances legais (perft). Histórico em notação algébrica (Nf3, O-O, exd5, Qxf7#).
+- **Dama brasileira:** captura obrigatória, **maior captura** obrigatória, peça comum captura para trás, dama voadora, promoção só se a jogada terminar na última fileira, 20 lances só de damas sem captura = empate. Se houver duas sequências diferentes até a mesma casa, vale a primeira.
+- **TV:** tabuleiro 2D ou 3D (botão "🖥 Trocar para 2D/3D" na TV ou no celular do ⭐; câmera fixa), peças que deslizam (cavalo salta), último lance e xeque destacados, capturadas e vantagem de material, histórico de lances.
+- **Celular:** toque na peça para ver os lances possíveis e toque no destino. O tabuleiro vira para quem joga de pretas. Seletor de promoção, propor empate / aceitar / recusar, desistir e revanche (troca as cores).
+- No lobby o ⭐ escolhe quem joga de brancas (sorteio, ⭐ ou o outro jogador) e 2D/3D.

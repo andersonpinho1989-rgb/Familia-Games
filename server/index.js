@@ -140,7 +140,7 @@ io.on('connection', (socket) => {
     if (!room || pid !== vipOf(room) || room.game || !room.gameId) return;
     const { min, max } = GAMES[room.gameId].meta;
     const n = room.players.size;
-    if (n < min || n > max) return socket.emit('toast', `Este jogo precisa de ${min} a ${max} jogadores.`);
+    if (n < min || n > max) return socket.emit('toast', min === max ? `Este jogo precisa de exatamente ${min} jogadores (agora há ${n}).` : `Este jogo precisa de ${min} a ${max} jogadores.`);
     room.game = new GAMES[room.gameId](makeCtx(room));
     room.game.onStart(); push(room);
   });
