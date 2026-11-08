@@ -2,7 +2,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Família Games</title>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css"><script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script></head>
+<link rel="stylesheet" href="/style.css"><script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/bidata.js"></script><script src="/audio.js"></script><script src="/dice.js"></script></head>
 <body><div id="topbtns" style="position:fixed;top:10px;right:10px;display:flex;gap:8px;z-index:9"><button id="exitbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:6px 12px"></button><button id="snd" class="btn ghost" style="width:auto;font-size:1.2rem;padding:6px 12px" aria-label="Som">🔊</button></div><div id="app" style="max-width:480px;margin:auto;padding:58px 18px 18px"></div>
 <script>
 const $ = document.getElementById('app'); const $id = (i) => document.getElementById(i); const socket = io(); let S = null, tick = null;
@@ -80,6 +80,7 @@ function render() {
   if (S.gameId === 'adedonha') adedonha(head, vip);
   else if (S.gameId === 'ludo') ludo(head, vip);
   else if (S.gameId === 'xadrez' || S.gameId === 'dama') boardgame(head, vip);
+  else if (S.gameId === 'banco') bancoPhone(head, vip);
 }
 
 function adedonha(head, vip) {
@@ -244,6 +245,122 @@ function boardgame(head, vip) {
   on('resg', () => { if (confirm('Desistir da partida?')) { GA.sfx('cancel'); socket.emit('game:action', { type: 'resign' }); } });
   on('end', () => socket.emit('game:end'));
 }
+
+// ================= BANCO IMOBILIÁRIO (celular) =================
+let BIS = { tab: 'play', trade: null, turnKey: '' };
+const biName = (id) => { const p = S.players.find((x) => x.id === id); return p ? p.name : '?'; };
+const biOwnsTradable = (v, who, i) => v.owner[i] === who && (BI.SQ[i].type !== 'prop' || BI.GROUPS[BI.SQ[i].group].every((j) => v.level[j] === 0));
+function biPropCard(i) {
+  const s = BI.SQ[i]; let rows = '';
+  if (s.type === 'prop') rows = `Aluguel ${BI.fmt(s.rent[0])} · 1 casa ${BI.fmt(s.rent[1])} · 2: ${BI.fmt(s.rent[2])} · 3: ${BI.fmt(s.rent[3])} · 4: ${BI.fmt(s.rent[4])} · hotel ${BI.fmt(s.rent[5])}<br>Casa/hotel: ${BI.fmt(s.house)}`;
+  else if (s.type === 'station') rows = 'Aluguel R$ 25 / 50 / 100 / 200 (1 a 4 estações)'; else rows = 'Aluguel: 4× o dado (10× com as duas companhias)';
+  return `<div class="panel" style="border-left:10px solid ${s.group ? BI.GROUP[s.group].c : '#9aa5b1'};margin:10px 0"><b>${esc(s.name)}</b> — ${BI.fmt(s.price)}<br><small>${rows}</small><br><small>Hipoteca: ${BI.fmt(s.mort)}</small></div>`;
+}
+const biSide = (t) => [t.cash ? BI.fmt(t.cash) : '', ...t.props.map((i) => BI.SQ[i].name), t.cards ? '🎟 saída da prisão ×' + t.cards : ''].filter(Boolean).join(', ') || 'nada';
+function biAct(type, payload, sfx) { GA.sfx(sfx || 'click'); buzz(20); socket.emit('game:action', { type, payload }); }
+
+function bancoPhone(head, vip) {
+  BHEAD2 = head; BVIP2 = vip;
+  const v = S.view, me = v.players.find((p) => p.id === S.me), can = v.can, tk = BI.TOKENS[me.idx], SQ = BI.SQ, myTurn = v.turn === S.me;
+  if (myTurn && v.phase === 'roll' && BIS.turnKey !== v.rollN + ':' + v.turn) { BIS.turnKey = v.rollN + ':' + v.turn; buzz([200, 80, 200]); GA.sfx('turn'); }
+  if (BIS.trade && (v.trade || !can.trade)) BIS.trade = null;
+  const sig = v.phase + ':' + v.turn + ':' + v.rollN + ':' + (can.bid ? 1 : 0) + ':' + (can.respond ? 1 : 0);
+  if (sig !== BIS.sig) { BIS.sig = sig; if (v.phase === 'over' || can.buy || can.bid || can.respond || can.roll) BIS.tab = 'play'; } // decisão para você: volta para a aba Jogo
+  const btn = (label, attr, cls, style) => `<button class="btn ${cls || ''}" ${attr} style="margin-top:10px;${style || ''}">${label}</button>`;
+  let h = head + `<div class="panel" style="display:flex;align-items:center;gap:12px;margin-bottom:10px"><div style="font-size:2rem;background:${tk.c};border-radius:50%;width:54px;height:54px;display:flex;align-items:center;justify-content:center">${tk.e}</div>
+    <div style="flex:1"><div style="font-size:1.7rem;font-weight:800">${BI.fmt(me.cash)}</div><small style="opacity:.85">📍 ${esc(SQ[me.pos].name)}${me.inJail ? ' · 🔒 preso' : ''}${me.jailCards ? ' · 🎟×' + me.jailCards : ''}${me.bankrupt ? ' · FALIDO' : ''}</small></div></div>`;
+  h += `<div style="display:flex;gap:8px;margin-bottom:6px">${[['play', '🎲 Jogo'], ['props', '🏠 Imóveis'], ['players', '👥 Jogadores']].map(([k, l]) => `<button class="btn ${BIS.tab === k ? '' : 'ghost'}" data-u="tab:${k}" style="padding:10px 4px;font-size:.95rem">${l}</button>`).join('')}</div>`;
+
+  if (BIS.trade) h += biTradeUI(v, me);
+  else if (BIS.tab === 'props') h += biPropsTab(v, me, can);
+  else if (BIS.tab === 'players') h += v.players.map((p) => { const T = BI.TOKENS[p.idx], n = v.owner.filter((o) => o === p.id).length; return `<div class="panel" style="margin:8px 0;${p.bankrupt ? 'opacity:.4' : ''}"><div style="display:flex;align-items:center;gap:10px"><span style="background:${T.c};border-radius:50%;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;font-size:1.3rem">${T.e}</span><b style="flex:1">${esc(biName(p.id))}${v.turn === p.id ? ' ▶' : ''}</b><b>${BI.fmt(p.cash)}</b></div><small style="opacity:.8">📍 ${esc(SQ[p.pos].name)} · 🏠 ${n} imóvel(is)${p.inJail ? ' · 🔒 preso' : ''}${p.bankrupt ? ' · falido' : ''}</small></div>`; }).join('');
+  else {
+    if (v.phase === 'over') h += `<div class="panel" style="text-align:center;font-size:1.3rem;margin-top:10px">🏆 <b>${esc(biName(v.winner))}</b> venceu!</div>` + btn('🔁 Jogar de novo', 'data-a="rematch"', '') + (vip ? btn('Voltar ao menu', 'id="end"', 'ghost') : '');
+    else if (me.bankrupt) h += `<div class="panel" style="margin-top:10px;text-align:center">💥 Você faliu. Acompanhe pela TV!</div>`;
+    else {
+      if (can.respond) h += `<div class="panel" style="margin-top:10px;border-left:8px solid var(--gold)">🤝 <b>${esc(biName(v.trade.from))}</b> propõe uma troca:<br>Ele dá: <b>${esc(biSide(v.trade.give))}</b><br>Ele pede: <b>${esc(biSide(v.trade.get))}</b><div style="display:flex;gap:10px">${btn('✅ Aceitar', 'data-a="acceptTrade"', '', 'background:var(--ok)')}${btn('Recusar', 'data-a="rejectTrade"', 'ghost')}</div></div>`;
+      else if (can.cancelTrade) h += `<div class="panel" style="margin-top:10px">🤝 Aguardando ${esc(biName(v.trade.to))} responder…${btn('Cancelar proposta', 'data-a="cancelTrade"', 'ghost')}</div>`;
+      if (v.phase === 'auction') {
+        const a = v.auction; h += biPropCard(a.sq) + `<div class="panel" style="text-align:center">🔨 Leilão · maior lance: <b>${a.high ? BI.fmt(a.high) + ' (' + esc(biName(a.bidder)) + ')' : 'nenhum'}</b></div>`;
+        if (can.bid) {
+          const mn = can.bid.min, opts = [...new Set([mn, a.high + 25, a.high + 50, a.high + 100].map((x) => Math.max(x, mn)))].filter((x) => x <= can.bid.max);
+          h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">${opts.map((x) => `<button class="btn" data-a="bid" data-amount="${x}" style="padding:14px 4px">${BI.fmt(x)}</button>`).join('')}</div>` + btn('Passar (sair do leilão)', 'data-a="pass"', 'ghost');
+          if (!opts.length) h += `<p style="text-align:center;opacity:.8">Você não tem dinheiro para cobrir o lance mínimo.</p>`;
+        } else h += `<p style="text-align:center;opacity:.8">Vez de ${esc(biName(a.cur))} dar o lance…</p>`;
+      } else if (v.phase === 'debt') {
+        if (v.debt.from === S.me) h += `<div class="panel" style="margin-top:10px;border-left:8px solid #FF5A5F">⚠ Você precisa pagar <b>${BI.fmt(v.debt.amount)}</b> (${esc(v.debt.reason)}) e tem ${BI.fmt(me.cash)}.<br><small>Na aba 🏠 Imóveis, venda construções ou hipoteque imóveis. O pagamento é automático quando o dinheiro bastar.</small></div>` + btn('🏳 Declarar falência', 'data-a="bankrupt"', 'ghost', 'background:#FF5A5F;color:#fff');
+        else h += `<p style="text-align:center;opacity:.85">${esc(biName(v.debt.from))} precisa levantar dinheiro…</p>`;
+      } else if (myTurn) {
+        if (v.phase === 'roll') {
+          h += btn('🎲 ROLAR OS DADOS', 'data-a="roll"', '', 'font-size:1.8rem;padding:26px;background:' + tk.c + ';color:#14213D');
+          if (me.inJail) { h += `<p style="text-align:center;margin:10px 0 0">🔒 Você está na prisão. Tire dupla, pague ou use a carta.</p>`; if (can.payJail) h += btn('Pagar R$ 50 e sair', 'data-a="payJail"', 'ghost'); if (can.useCard) h += btn('🎟 Usar carta de saída', 'data-a="useCard"', 'ghost'); }
+        } else if (v.phase === 'buy') {
+          h += biPropCard(me.pos) + `<div style="display:flex;gap:10px">${btn('🏠 Comprar', 'data-a="buy"', '', 'background:var(--ok);color:#14213D')}${btn('🔨 Leiloar', 'data-a="decline"', 'ghost')}</div>`;
+        } else if (v.phase === 'manage') h += btn('✅ Encerrar a vez', 'data-a="endTurn"', '', (can.endTurn ? '' : 'opacity:.4;') + 'background:var(--ok);color:#14213D');
+        if (can.trade) h += btn('🤝 Propor troca', 'data-u="topen"', 'ghost');
+        if (can.bankrupt) h += btn('🏳 Desistir da partida', 'data-a="bankrupt"', 'ghost', 'font-size:.9rem;padding:10px');
+      } else h += `<p style="text-align:center;margin:16px 0;opacity:.9">Vez de <b>${esc(biName(v.turn))}</b>…</p>`;
+      if (v.rollN > 0) h += `<p style="text-align:center;opacity:.7;margin:6px 0">Último lance dos dados: 🎲 ${v.dice[0]} + ${v.dice[1]} = ${v.dice[0] + v.dice[1]}</p>`;
+    }
+    h += `<div style="margin-top:14px;opacity:.75;font-size:.85rem;line-height:1.5">${v.log.slice(-4).map((l) => '<div>' + esc(l) + '</div>').join('')}</div>`;
+  }
+  const y = window.scrollY; $.innerHTML = h; window.scrollTo(0, y);
+  $.onclick = biClick;
+  if ($id('end')) $id('end').onclick = () => socket.emit('game:end');
+}
+
+function biPropsTab(v, me, can) {
+  const mine = []; v.owner.forEach((o, i) => { if (o === S.me) mine.push(i); });
+  if (!mine.length) return `<p style="text-align:center;opacity:.8;margin-top:20px">Você ainda não tem imóveis. Compre ao cair neles!</p>`;
+  const SQ = BI.SQ;
+  return `<div style="margin-top:8px">` + mine.map((i) => {
+    const s = SQ[i], lv = v.level[i], col = s.group ? BI.GROUP[s.group].c : '#9aa5b1', cost = Math.ceil(s.mort * 1.1), b = [];
+    if (can.build.includes(i)) b.push(`<button class="btn" data-a="build" data-sq="${i}" style="width:auto;padding:8px 12px;font-size:.9rem">🏗 ${lv === 4 ? 'Hotel' : 'Casa'} ${BI.fmt(s.house)}</button>`);
+    if (can.sell.includes(i)) b.push(`<button class="btn ghost" data-a="sell" data-sq="${i}" style="width:auto;padding:8px 12px;font-size:.9rem">💵 Vender (+${BI.fmt(Math.floor(s.house / 2))})</button>`);
+    if (can.mortgage.includes(i)) b.push(`<button class="btn ghost" data-a="mortgage" data-sq="${i}" style="width:auto;padding:8px 12px;font-size:.9rem">🏦 Hipotecar (+${BI.fmt(s.mort)})</button>`);
+    if (can.unmortgage.includes(i)) b.push(`<button class="btn ghost" data-a="unmortgage" data-sq="${i}" style="width:auto;padding:8px 12px;font-size:.9rem">↩ Resgatar (${BI.fmt(cost)})</button>`);
+    return `<div class="panel" style="border-left:10px solid ${col};margin-bottom:8px"><div style="display:flex;justify-content:space-between"><b>${esc(s.name)}</b><span>${lv === 5 ? '🏨' : '🏠'.repeat(lv)}${v.mort[i] ? ' <small style="color:#FF5A5F">HIPOTECADA</small>' : ''}</span></div>
+      <small style="opacity:.8">${s.type === 'prop' ? 'Aluguel agora: ' + BI.fmt(lv ? s.rent[lv] : s.rent[0] * (BI.GROUPS[s.group].every((j) => v.owner[j] === S.me) ? 2 : 1)) : s.type === 'station' ? 'Aluguel 25 a 200' : '4× ou 10× o dado'}</small>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${b.join('') || '<small style="opacity:.6">Sem ações agora (construir/hipotecar na sua vez)</small>'}</div></div>`;
+  }).join('') + `</div>`;
+}
+
+function biTradeUI(v, me) {
+  const t = BIS.trade, others = v.players.filter((p) => !p.bankrupt && p.id !== S.me);
+  if (t.step === 'pick') return `<h3 style="margin:12px 0 6px">Trocar com quem?</h3>` + others.map((p) => `<button class="btn ghost" data-u="tpick:${p.id}" style="margin-bottom:8px;text-align:left">${BI.TOKENS[p.idx].e} ${esc(biName(p.id))} · ${BI.fmt(p.cash)}</button>`).join('') + `<button class="btn ghost" data-u="tback" style="margin-top:6px">Voltar</button>`;
+  const other = v.players.find((p) => p.id === t.to);
+  const sec = (side, who, title, cash) => {
+    const tr = t[side], list = []; v.owner.forEach((o, i) => { if (biOwnsTradable(v, who, i)) list.push(i); });
+    return `<div class="panel" style="margin:10px 0"><b>${title}</b>
+      <div style="display:flex;align-items:center;gap:6px;margin:8px 0">${[-100, -10].map((d) => `<button class="btn ghost" data-u="tc:${side}:${d}" style="width:auto;padding:8px 10px">${d}</button>`).join('')}<b style="flex:1;text-align:center">${BI.fmt(tr.cash)}</b>${[10, 100].map((d) => `<button class="btn ghost" data-u="tc:${side}:${d}" style="width:auto;padding:8px 10px">+${d}</button>`).join('')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${list.map((i) => `<button class="btn ${tr.props.includes(i) ? '' : 'ghost'}" data-u="tp:${side}:${i}" style="width:auto;padding:6px 10px;font-size:.85rem;border-left:8px solid ${BI.GROUP[BI.SQ[i].group] ? BI.GROUP[BI.SQ[i].group].c : '#9aa5b1'}">${esc(BI.SQ[i].name)}${v.mort[i] ? ' (hip.)' : ''}</button>`).join('') || '<small style="opacity:.6">Sem imóveis negociáveis (grupos com construções não podem ser trocados)</small>'}</div>
+      ${(side === 'give' ? me : other).jailCards ? `<div style="margin-top:8px">🎟 Carta da prisão: <button class="btn ghost" data-u="tk:${side}:-1" style="width:auto;padding:4px 10px">−</button> <b>${tr.cards}</b> <button class="btn ghost" data-u="tk:${side}:1" style="width:auto;padding:4px 10px">+</button></div>` : ''}</div>`;
+  };
+  return `<h3 style="margin:12px 0 0">Troca com ${esc(biName(t.to))}</h3>` + sec('give', S.me, 'Você oferece', me.cash) + sec('get', t.to, 'Você pede', other.cash) +
+    `<div class="panel" style="text-align:center">Dá: <b>${esc(biSide(t.give))}</b><br>Pede: <b>${esc(biSide(t.get))}</b></div><button class="btn" data-u="tsend" style="margin-top:10px;background:var(--ok);color:#14213D">📨 Enviar proposta</button><button class="btn ghost" data-u="tback" style="margin-top:8px">Cancelar</button>`;
+}
+
+function biClick(e) {
+  const b = e.target.closest ? e.target.closest('[data-a],[data-u]') : null; if (!b || b.disabled || !S || !S.view || S.view.kind !== 'banco') return;
+  const v = S.view;
+  if (b.dataset.a) {
+    const a = b.dataset.a, SFX = { roll: 'dice', buy: 'home', build: 'ok', sell: 'move', mortgage: 'move', unmortgage: 'ok', acceptTrade: 'reveal', rematch: 'start' };
+    if (a === 'bankrupt' && !confirm('Tem certeza? Você sairá da partida e perderá tudo.')) return;
+    const payload = b.dataset.sq !== undefined ? { sq: +b.dataset.sq } : b.dataset.amount ? { amount: +b.dataset.amount } : undefined;
+    return biAct(a, payload, SFX[a]);
+  }
+  const [k, x, y] = b.dataset.u.split(':'), t = BIS.trade;
+  if (k === 'tab') BIS.tab = x;
+  else if (k === 'topen') BIS.trade = { step: 'pick' };
+  else if (k === 'tpick') BIS.trade = { step: 'edit', to: x, give: { cash: 0, props: [], cards: 0 }, get: { cash: 0, props: [], cards: 0 } };
+  else if (k === 'tback') BIS.trade = null;
+  else if (k === 'tc') { const who = x === 'give' ? S.me : t.to, max = v.players.find((p) => p.id === who).cash; t[x].cash = Math.max(0, Math.min(max, t[x].cash + +y)); }
+  else if (k === 'tp') { const i = +y, a = t[x].props, at = a.indexOf(i); if (at >= 0) a.splice(at, 1); else a.push(i); }
+  else if (k === 'tk') { const who = x === 'give' ? S.me : t.to, max = v.players.find((p) => p.id === who).jailCards; t[x].cards = Math.max(0, Math.min(max, t[x].cards + +y)); }
+  else if (k === 'tsend') { GA.sfx('click'); socket.emit('game:action', { type: 'offerTrade', payload: { to: t.to, give: t.give, get: t.get } }); BIS.trade = null; return; }
+  GA.sfx('click'); bancoPhone(BHEAD2, BVIP2);
+}
+let BHEAD2 = '', BVIP2 = false;
 
 // ================= SOM e ENCERRAR PARTIDA (celular) =================
 let lastPh = '', playKey = '';

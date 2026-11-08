@@ -3,7 +3,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/ludo3d.js"></script><script src="/board2d.js"></script><script src="/board3d.js"></script></head>
+<script src="/socket.io/socket.io.js"></script><script src="/themes.js"></script><script src="/audio.js"></script><script src="/dice.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/ludo3d.js"></script><script src="/board2d.js"></script><script src="/board3d.js"></script><script src="/bidata.js"></script><script src="/biboard.js"></script><script src="/bi2d.js"></script><script src="/bi3d.js"></script></head>
 <body><div id="ctl" style="position:fixed;top:1vw;right:1vw;display:flex;gap:10px;z-index:9">
   <button id="newroom" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">🔄 Encerrar tudo e gerar novo QR Code</button>
   <button id="viewbtn" class="btn ghost" hidden style="width:auto;font-size:1rem;padding:10px 16px">🖥 Trocar para 2D</button>
@@ -35,11 +35,13 @@ function render() {
   clearInterval(tick); clearTimeout(spinT);
   document.getElementById('endbtn').hidden = S.phase !== 'game';
   document.getElementById('newroom').hidden = S.phase !== 'lobby';
-  const vb = document.getElementById('viewbtn'); vb.hidden = !(S.phase === 'game' && ['ludo', 'xadrez', 'dama'].includes(S.gameId));
+  const vb = document.getElementById('viewbtn'); vb.hidden = !(S.phase === 'game' && ['ludo', 'xadrez', 'dama', 'banco'].includes(S.gameId));
   vb.textContent = S.settings && S.settings.view === '2d' ? '🖥 Trocar para 3D' : '🖥 Trocar para 2D';
   if (L3 && !(S.phase === 'game' && S.gameId === 'ludo')) { L3.destroy(); L3 = null; }
   if (BG && !(S.phase === 'game' && (S.gameId === 'xadrez' || S.gameId === 'dama'))) { BG.destroy(); BG = null; BMODE = null; }
+  if (BIB && !(S.phase === 'game' && S.gameId === 'banco')) { BIB.destroy(); BIB = null; BIMODE = null; }
   if (S.phase === 'lobby') return lobby();
+  if (S.gameId === 'banco') return bancoTV();
   if (S.gameId === 'xadrez' || S.gameId === 'dama') return boardgame();
   if (S.gameId === 'adedonha') return adedonha();
   if (S.gameId === 'ludo') return ludo();
@@ -239,6 +241,52 @@ function boardgame() {
   $e('bhist').innerHTML = h || '<span style="opacity:.6">Nenhum lance ainda</span>'; $e('bhist').scrollTop = $e('bhist').scrollHeight;
 }
 
+// ================= BANCO IMOBILIÁRIO (TV) =================
+let BIB = null, BIMODE = null, BIDICE = null, BIN = null;
+function buildBI(v, want) { // 3D ou 2D dentro de #biwrap
+  const wrap = document.getElementById('biwrap');
+  if (BIB) { BIB.destroy(); BIB = null; }
+  wrap.innerHTML = '';
+  if (want === '3d' && window.Bi3D) { try { BIB = Bi3D.create(wrap, v); } catch (e) { console.error(e); BIB = null; } }
+  if (!BIB) BIB = Bi2D.create(wrap, v);
+  BIMODE = want;
+}
+function bancoTV() {
+  const v = S.view, want = v.view === '2d' ? '2d' : '3d', $e = (i) => document.getElementById(i), SQ = BI.SQ, fm = BI.fmt;
+  const nm = (id) => byId(id).name, pl = (id) => v.players.find((p) => p.id === id), tk = (id) => BI.TOKENS[pl(id).idx];
+  if (!$e('biwrap')) {
+    $.innerHTML = `<div style="display:flex;gap:2vw;align-items:center;justify-content:center;min-height:92vh">
+      <div id="biwrap" style="flex:none;width:min(60vw,92vh);height:min(60vw,92vh)"></div>
+      <div id="biside" style="flex:1;max-width:33vw;display:flex;flex-direction:column;gap:10px">
+        <div class="panel" style="text-align:center;border:6px solid #fff" id="bi_turn"><div id="bi_title" style="font-size:1.2em;font-weight:800"></div>
+          <div style="display:flex;gap:1.4em;justify-content:center;padding:.5em 0"><div id="bid1"></div><div id="bid2"></div></div><div id="bi_msg" style="min-height:1.3em;opacity:.9;font-size:.9em"></div></div>
+        <div id="bi_box"></div><div class="panel" id="bi_players"></div>
+        <div class="panel" id="bi_log" style="max-height:19vh;overflow:auto;font-size:.72em;line-height:1.5"></div></div></div>`;
+    BIDICE = [Dice.create($e('bid1'), 64), Dice.create($e('bid2'), 64)]; BIN = null; BIB = null; BIMODE = null;
+  }
+  if (BIMODE !== want) buildBI(v, want);
+  BIB.update(v);
+  const cur = tk(v.turn);
+  $e('bi_turn').style.borderColor = cur.c; $e('bid1').style.setProperty('--pip', cur.c); $e('bid2').style.setProperty('--pip', cur.c);
+  $e('bi_title').textContent = v.phase === 'over' ? '🏆 ' + nm(v.winner) + ' venceu!' : 'Vez de ' + cur.e + ' ' + nm(v.turn);
+  if (BIN === null) { BIDICE[0].set(v.dice[0] || 1); BIDICE[1].set(v.dice[1] || 1); } else if (v.rollN !== BIN) { BIDICE[0].roll(v.dice[0] || 1); BIDICE[1].roll(v.dice[1] || 1); }
+  BIN = v.rollN;
+  $e('bi_msg').textContent = v.log.length ? v.log[v.log.length - 1] : '';
+  const side = (t) => [t.cash ? fm(t.cash) : '', ...t.props.map((i) => SQ[i].name), t.cards ? '🎟 saída da prisão ×' + t.cards : ''].filter(Boolean).join(', ') || 'nada';
+  let box = '';
+  if (v.phase === 'over') box = `<div class="panel" style="text-align:center;font-size:1.4em;font-weight:800">🏆 ${esc(nm(v.winner))} é o grande vencedor!</div>`;
+  else if (v.debt) box = `<div class="panel" style="border-left:8px solid #FF5A5F">⚠ <b>${esc(nm(v.debt.from))}</b> precisa levantar <b>${fm(v.debt.amount)}</b> (${esc(v.debt.reason)}). Vendendo ou hipotecando imóveis…</div>`;
+  else if (v.auction) { const a = v.auction;
+    box = `<div class="panel" style="border-left:8px solid ${SQ[a.sq].group ? BI.GROUP[SQ[a.sq].group].c : '#888'}">🔨 <b>Leilão: ${esc(SQ[a.sq].name)}</b> (${fm(SQ[a.sq].price)})<br>Maior lance: <b>${a.high ? fm(a.high) + ' — ' + esc(nm(a.bidder)) : 'nenhum'}</b><br>Vez de ${esc(nm(a.cur))} <span id="clock" style="float:right;font-weight:800"></span></div>`; }
+  else if (v.trade) box = `<div class="panel" style="border-left:8px solid var(--gold)">🤝 <b>${esc(nm(v.trade.from))}</b> propõe a <b>${esc(nm(v.trade.to))}</b>:<br>dá: ${esc(side(v.trade.give))}<br>pede: ${esc(side(v.trade.get))}</div>`;
+  else if (v.card) box = `<div class="panel" style="border-left:8px solid #2EC4B6">🎴 <b>${esc(nm(v.card.who))}</b>: ${esc(v.card.text)}</div>`;
+  $e('bi_box').innerHTML = box;
+  $e('bi_players').innerHTML = v.players.map((p) => { const T = BI.TOKENS[p.idx], n = v.owner.filter((o) => o === p.id).length;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;${p.bankrupt ? 'opacity:.4;text-decoration:line-through' : ''}"><span style="background:${T.c};border-radius:50%;width:1.7em;height:1.7em;display:inline-flex;align-items:center;justify-content:center">${T.e}</span><b style="flex:1">${esc(nm(p.id))}${v.turn === p.id && v.phase !== 'over' ? ' ▶' : ''}${p.inJail ? ' 🔒' : ''}${p.jailCards ? ' 🎟' : ''}</b><span>🏠${n}</span><b>${fm(p.cash)}</b></div>`; }).join('') + (v.pot !== null ? `<div style="opacity:.8;margin-top:6px">🅿 Parada Livre: ${fm(v.pot)}</div>` : '') + `<div style="opacity:.6;font-size:.8em;margin-top:6px">Casas ${v.houses.used}/${v.houses.max} · Hotéis ${v.houses.hotels}/${v.houses.maxHotels}</div>`;
+  $e('bi_log').innerHTML = v.log.map((l) => '<div>' + esc(l) + '</div>').join(''); $e('bi_log').scrollTop = $e('bi_log').scrollHeight;
+  if (v.auction && v.auction.endsAt) clock(v.auction.endsAt, v.serverNow);
+}
+
 // ================= SOM, ENCERRAR e SORTEIO DE LETRA (TV) =================
 let spinT = null, lastTick = -1;
 function sounds(p, s) {
@@ -258,6 +306,10 @@ function sounds(p, s) {
     if (ev) return GA.sfx(ev);
     if (a.phase === 'roll' && b.phase !== 'roll' && b.dice) return GA.sfx('dice');
     if (b.phase === 'roll' && a.turn !== b.turn) GA.sfx('turn');
+  } else if (s.gameId === 'banco') {
+    const seen = Math.max(0, ...(a.evs || []).map((e) => e.n)), MAP = { dice: 'dice', salary: 'reveal', buy: 'home', rent: 'capture', card: 'turn', jail: 'error', free: 'ok', auction: 'start', bid: 'click', build: 'ok', sell: 'move', trade: 'reveal', bankrupt: 'cancel', win: 'win' };
+    (b.evs || []).filter((e) => e.n > seen).slice(-3).forEach((e) => GA.sfx(MAP[e.type] || 'click'));
+    if (b.moveN !== a.moveN && b.lastMove && b.lastMove.kind === 'step') GA.sfx('move');
   } else if (s.gameId === 'xadrez' || s.gameId === 'dama') {
     if (b.over && !a.over) return GA.sfx(b.over.winner ? 'win' : 'cancel');
     if (b.moves > a.moves) GA.sfx(b.check >= 0 ? 'check' : b.lastCap ? 'capture' : 'move');

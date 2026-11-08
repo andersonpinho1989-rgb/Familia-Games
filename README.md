@@ -52,3 +52,12 @@ registre em `server/games/index.js` e renderize a view em `public/index.html` (T
 - **TV:** tabuleiro 2D ou 3D (botão "🖥 Trocar para 2D/3D" na TV ou no celular do ⭐; câmera fixa), peças que deslizam (cavalo salta), último lance e xeque destacados, capturadas e vantagem de material, histórico de lances.
 - **Celular:** toque na peça para ver os lances possíveis e toque no destino. O tabuleiro vira para quem joga de pretas. Seletor de promoção, propor empate / aceitar / recusar, desistir e revanche (troca as cores).
 - No lobby o ⭐ escolhe quem joga de brancas (sorteio, ⭐ ou o outro jogador) e 2D/3D.
+
+## Banco Imobiliário (2 a 6 jogadores, tabuleiro 3D ou 2D)
+- **Regras:** dois dados (dupla joga de novo; 3 duplas = prisão); cair em imóvel livre = comprar ou **leilão** (lances com mínimo de R$ 10, vez em rodízio, 25 s por lance); aluguel (dobro com o grupo completo sem casas; estações 25/50/100/200; companhias 4× ou 10× o dado); **casas e hotéis** (grupo completo, construção uniforme, estoque de 32 casas e 12 hotéis); **hipoteca** (resgate com 10%); **prisão** (pagar R$ 50, carta de saída ou tirar dupla; 3ª tentativa paga); **Sorte ou Revés** (28 cartas); impostos; **trocas** entre jogadores (dinheiro, imóveis e carta da prisão); **falência** (bens vão ao credor ou voltam ao banco) e vencedor.
+- **Lobby:** dinheiro inicial (R$ 1.000 / 1.500 / 2.500), salário (R$ 200 / 300), Parada Livre acumula multas (sim/não) e 2D/3D.
+- **TV:** tabuleiro 3D com fichas diferentes (carro, cartola, cachorro, navio, bota, foguete) que andam casa por casa, casas e hotéis, marca do dono e véu de hipoteca; dois dados 3D; dinheiro de todos, leilão, trocas, cartas e histórico. Se não houver WebGL, usa o 2D.
+- **Celular:** abas Jogo / Imóveis / Jogadores. Rolar, comprar ou leiloar, dar lances, construir, vender, hipotecar, resgatar, montar e responder trocas, pagar a prisão, desistir.
+- **Jogador desconectado:** o servidor joga por ele (rola, compra se sobrar dinheiro, passa nos leilões, recusa trocas, falência se não houver como pagar).
+- **Simplificações:** construir, hipotecar e propor trocas só na sua vez; bens de quem falece para o banco voltam livres (sem leilão); propriedade hipotecada recebida numa troca gera taxa de 10% para quem recebe.
+- **Dados editáveis:** `public/bidata.js` tem casas, preços, aluguéis, fichas e cartas. Os nomes e textos são originais (não são os do tabuleiro comercial).
